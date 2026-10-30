@@ -435,15 +435,16 @@ function viewGuard(){
     <div class="row" style="padding:6px 0;border-top:1px solid var(--line)"><div><b>定时锁定</b><div class="sub">睡眠时段自动锁定</div></div>
       <div class="sw ${r.timed?'on':''}" onclick="setRule('timed',${!r.timed})"></div></div>
     ${r.timed ? `<div style="padding:10px 0">
-      <div class="sub" style="margin-bottom:8px">锁定时段：可添加多个，任一命中即锁定。起止相同表示跨夜，例如 21 点 → 7 点。</div>
+      <div class="sub" style="margin-bottom:8px">锁定时段：可添加多个，任一命中即锁定。可精确到分钟，例如 22:32 → 07:15。</div>
       ${sleepList.map((w,i) => `<div class="st" style="margin-bottom:8px">
-        <input type="number" min="0" max="23" value="${w.s}" style="width:60px" onchange="setWin(${i},'s',+this.value)"> 点
+        <input type="time" value="${fmtWin(w.s)}" style="flex:1" onchange="setWin(${i},'s',this.value)">
         <span>—</span>
-        <input type="number" min="0" max="23" value="${w.e}" style="width:60px" onchange="setWin(${i},'e',+this.value)"> 点
+        <input type="time" value="${fmtWin(w.e)}" style="flex:1" onchange="setWin(${i},'e',this.value)">
         <button class="g" style="color:var(--bad);margin-left:6px" onclick="delWin(${i})">删除</button>
       </div>`).join('')}
       ${sleepList.length ? '' : `<div class="sub" style="margin-bottom:8px">还没有时段，点下面添加</div>`}
       <button style="width:100%" onclick="addWin()">+ 添加时段</button>
+      <div class="sub" style="margin-top:8px">时段结束时自动解锁；起点晚于终点表示跨夜。</div>
     </div>` : ''}
   </div>`;
 
@@ -640,23 +641,38 @@ function statCard(title, days){
   </div>`;
 }
 
-/* ── 多时段锁定 ── */
+/* ── 锁定时段：统一用 "HH:mm" 字符串表示，兼容旧的整数小时 ── */
+function fmtWin(v){
+  if(v === null || v === undefined || v === '') return '21:00';
+  if(typeof v === 'number') return pad(Math.floor(v) % 24) + ':00';   // 旧数据 21 -> "21:00"
+  const s = String(v).trim();
+  if(/^\d{1,2}$/.test(s)) return pad(+s % 24) + ':00';                // "21" -> "21:00"
+  const m = s.match(/^(\d{1,2}):(\d{1,2})/);
+  if(m) return pad(Math.min(23, +m[1])) + ':' + pad(Math.min(59, +m[2]));
+  return '21:00';
+}
+/** "HH:mm" -> 当日第几分钟 */
+function toMin(v){
+  const a = fmtWin(v).split(':');
+  return (+a[0]) * 60 + (+a[1]);
+}
 function curWins(){
   const r = (DEV && DEV.rules) || {};
   return Array.isArray(r.sleepWindows) && r.sleepWindows.length
-    ? r.sleepWindows.map(w => ({ s: +w.s, e: +w.e }))
-    : [{ s: r.sleepStart ?? 21, e: r.sleepEnd ?? 7 }];
+    ? r.sleepWindows.map(w => ({ s: fmtWin(w.s), e: fmtWin(w.e) }))
+    : [{ s: fmtWin(r.sleepStart ?? 21), e: fmtWin(r.sleepEnd ?? 7) }];
 }
 function saveWins(list){
   api('rules', { method:'POST', body:{ deviceId: DEV.id, rules:{ sleepWindows: list } } }).then(load);
 }
 function addWin(){
   const list = curWins();
-  // 新时段默认紧接上一个时段结束，避免和已有区间重叠
-  const prev = list[list.length - 1] || { s: 21, e: 7 };
-  const st = prev.e;
-  const en = (st + 2) % 24;
-  list.push({ s: st, e: en });
+  // 新时段默认接在上一个结束之后 2 小时，避免和已有区间重叠
+  const prev = list[list.length - 1] || { s: '21:00', e: '07:00' };
+  const st = toMin(prev.e);
+  const en = (st + 120) % 1440;
+  const hhmm = n => pad(Math.floor(n / 60) % 24) + ':' + pad(n % 60);
+  list.push({ s: hhmm(st), e: hhmm(en) });
   saveWins(list);
 }
 function delWin(i){
@@ -668,8 +684,8 @@ function delWin(i){
 function setWin(i, key, v){
   const list = curWins();
   if(!list[i]) return;
-  if(!(v >= 0 && v <= 23)){ alert('小时必须是 0 到 23 之间的整数'); load(); return; }
-  list[i][key] = v;
+  if(!/^\d{1,2}:\d{2}/.test(String(v || ''))){ alert('时间格式应为 HH:mm，例如 22:32'); load(); return; }
+  list[i][key] = fmtWin(v);
   saveWins(list);
 }
 
