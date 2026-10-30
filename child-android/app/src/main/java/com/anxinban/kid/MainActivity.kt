@@ -22,6 +22,13 @@ class MainActivity : Activity() {
         val code = EditText(this).apply { hint = "输入家长端的 6 位绑定码" }
         fun btn(t: String, f: () -> Unit) = Button(this).apply { text = t; setOnClickListener { f() } }
         col.addView(TextView(this).apply { text = "家长守护 · 孩子端"; textSize = 22f })
+        // 版本号单独一行、醒目显示，避免被状态区遮挡
+        col.addView(TextView(this).apply {
+            text = "版本 v" + (packageManager.getPackageInfo(packageName, 0).versionName ?: "?")
+            textSize = 18f
+            setTextColor(0xFF1976D2.toInt())
+            setPadding(0, 8, 0, 12)
+        })
         col.addView(status)
         val server = EditText(this).apply {
             hint = "服务器地址，如 guard.example.com 或 192.168.1.20:3000"
