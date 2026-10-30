@@ -37,6 +37,13 @@ object DeviceInfo {
             o.put("memAvail", mi.availMem)
         } catch (_: Exception) {}
 
+        // 应用版本
+        try {
+            val pi = c.packageManager.getPackageInfo(c.packageName, 0)
+            o.put("appVersionName", pi.versionName ?: "?")
+            o.put("appVersionCode", if (Build.VERSION.SDK_INT >= 28) pi.longVersionCode else @Suppress("DEPRECATION") pi.versionCode.toLong())
+        } catch (_: Exception) {}
+
         // 屏幕亮屏时长（开机以来）
         try {
             // 不需要额外权限的近似值：开机时长

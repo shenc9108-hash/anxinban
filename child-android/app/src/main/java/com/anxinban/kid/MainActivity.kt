@@ -83,6 +83,10 @@ class MainActivity : Activity() {
                 }
             }
         })
+        col.addView(btn("检查更新") {
+            toast("正在检查…")
+            Updater.check(this, force = true)
+        })
         col.addView(btn("无服务器测试：载入演示规则") { Store.saveRules(this, demo); startGuard(); toast("微信限 1 分钟，用后会被拦截"); refresh() })
         setContentView(ScrollView(this).apply { addView(col) })
     }
@@ -110,13 +114,18 @@ class MainActivity : Activity() {
         refresh()
     }
 
-    override fun onResume() { super.onResume(); refresh() }
+    override fun onResume() {
+        super.onResume()
+        refresh()
+        // 每次回到前台检查一次更新（内部有 6 小时节流）
+        try { Updater.check(this) } catch (_: Exception) {}
+    }
     private fun startGuard() = startForegroundService(Intent(this, SyncService::class.java))
     private fun toast(m: String) = Toast.makeText(this, m, Toast.LENGTH_LONG).show()
 
     private fun refresh() {
         val on = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
             ?.contains(packageName) == true
-        status.text = "绑定：" + (if (Store.token(this) != null) "已绑定" else "未绑定") + "\n无障碍：" + (if (on) "已开启" else "未开启") + "\n防卸载：" + (if (AdminReceiver.isActive(this)) "已启用" else "未启用") + "\n截屏授权：" + (if (ScreenCapture.isReady()) "已开启" else "未开启")
+        status.text = "绑定：" + (if (Store.token(this) != null) "已绑定" else "未绑定") + "\n无障碍：" + (if (on) "已开启" else "未开启") + "\n防卸载：" + (if (AdminReceiver.isActive(this)) "已启用" else "未启用") + "\n截屏授权：" + (if (ScreenCapture.isReady()) "已开启" else "未开启") + "\n当前版本：v" + (packageManager.getPackageInfo(packageName, 0).versionName ?: "?")
     }
 }

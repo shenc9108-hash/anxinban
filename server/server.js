@@ -24,7 +24,37 @@ function checkFences(d) {
 http.createServer(async (req, res) => {
   const p = new URL(req.url, 'http://x').pathname, m = req.method;
   if (!p.startsWith('/api/')) {
-    if (p === '/') { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); return res.end(fs.readFileSync(path.join(__dirname, 'public/index.html'))); }
+    // 首页
+    if (p === '/' || p === '/index.html') {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      return res.end(fs.readFileSync(path.join(__dirname, 'public/index.html')));
+    }
+    // 静态文件（防目录穿越）
+    const rel = decodeURIComponent(p).replace(/^\/+/, '');
+    if (!rel.includes('..')) {
+      const fp = path.join(__dirname, 'public', rel);
+      try {
+        const st = fs.statSync(fp);
+        if (st.isFile()) {
+          const ext = path.extname(fp).toLowerCase();
+          const types = {
+            '.html': 'text/html; charset=utf-8',
+            '.js': 'application/javascript; charset=utf-8',
+            '.css': 'text/css; charset=utf-8',
+            '.json': 'application/json; charset=utf-8',
+            '.png': 'image/png',
+            '.svg': 'image/svg+xml',
+            '.apk': 'application/vnd.android.package-archive',
+          };
+          res.writeHead(200, {
+            'Content-Type': types[ext] || 'application/octet-stream',
+            'Content-Length': st.size,
+            'Cache-Control': ext === '.apk' ? 'no-cache' : 'public, max-age=300',
+          });
+          return fs.createReadStream(fp).pipe(res);
+        }
+      } catch (_) {}
+    }
     return send(res, 404, {});
   }
   const b = m === 'POST' ? await body(req) : {};
@@ -62,12 +92,69 @@ http.createServer(async (req, res) => {
     db.requests.push({ id: crypto.randomUUID(), deviceId: d.id, pkg: b.pkg, minutes: b.minutes || 15, ts: Date.now(), status: 'pending' });
     save(); return send(res, 200, {});
   }
+  // ---- 上传新版本 APK（家长用，需 x-parent-key）----
+  if (p === '/api/parent/publish' && m === 'POST') {
+    if (req.headers['x-parent-key'] !== KEY) return send(res, 401, {});
+    const versionCode = +(req.headers['x-version-code'] || 0);
+    const versionName = req.headers['x-version-name'] || '1.0.0';
+    if (!versionCode) return send(res, 400, { error: '缺少 x-version-code' });
+
+    const dir = path.join(__dirname, 'public/apk');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, 'anxinban.apk');
+    const tmp = file + '.tmp';
+
+    await new Promise((resolve, reject) => {
+      const ws = fs.createWriteStream(tmp);
+      req.pipe(ws);
+      ws.on('finish', resolve);
+      ws.on('error', reject);
+    });
+
+    const sz = fs.statSync(tmp).size;
+    if (sz < 100000) { try { fs.unlinkSync(tmp); } catch(_){} return send(res, 400, { error: '文件过小，不是有效 APK' }); }
+    fs.renameSync(tmp, file);
+
+    db.latestVersion = {
+      versionCode,
+      versionName,
+      apkUrl: '/apk/anxinban.apk',
+      size: sz,
+      notes: req.headers['x-notes'] ? decodeURIComponent(req.headers['x-notes']) : '',
+      updatedAt: Date.now(),
+    };
+    save();
+    return send(res, 200, db.latestVersion);
+  }
+
+  // ---- 版本信息（孩子端检查更新用）----
+  if (p === '/api/version') {
+    const v = db.latestVersion || { versionCode: 1, versionName: '1.0.0', apkUrl: '', notes: '' };
+    // 拼成绝对地址，孩子端可直接下载
+    const host = req.headers['x-forwarded-host'] || req.headers.host || '';
+    const proto = req.headers['x-forwarded-proto'] || 'https';
+    const out = { ...v };
+    if (v.apkUrl && v.apkUrl.startsWith('/')) out.apkUrl = proto + '://' + host + v.apkUrl;
+    return send(res, 200, out);
+  }
+
   // ---- 家长端（请求头 x-parent-key）----
   if (p.startsWith('/api/parent/')) {
     if (req.headers['x-parent-key'] !== KEY) return send(res, 401, {});
     const a = p.slice(12);
     if (a === 'code') { const c = String(Math.floor(100000 + Math.random() * 900000)); db.codes[c] = Date.now() + 600000; save(); return send(res, 200, { code: c }); }
     if (a === 'state') return send(res, 200, { devices: Object.values(db.devices).map(pub), requests: db.requests.filter(r => r.status === 'pending'), alerts: (db.alerts || []).slice(-10).reverse() });
+    if (a === 'version/set') {
+      db.latestVersion = {
+        versionCode: +b.versionCode || 1,
+        versionName: b.versionName || '1.0.0',
+        apkUrl: b.apkUrl || '',
+        notes: b.notes || '',
+        updatedAt: Date.now(),
+      };
+      save();
+      return send(res, 200, db.latestVersion);
+    }
     if (a === 'shot/request') {
       const d = db.devices[b.deviceId]; if (!d) return send(res, 404, {});
       d.shotWanted = Date.now(); save();

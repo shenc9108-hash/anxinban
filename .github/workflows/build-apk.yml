@@ -23,13 +23,68 @@ jobs:
         with:
           gradle-version: '8.7'
 
+      # 还原固定签名证书（来自 Repository secrets）
+      - name: Restore keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::error::缺少 KEYSTORE_B64"
+            exit 1
+          fi
+          mkdir -p child-android/keystore
+          printf '%s' "$KEYSTORE_B64" | base64 -d > child-android/keystore/anxinban.keystore
+          SZ=$(stat -c%s child-android/keystore/anxinban.keystore)
+          echo "keystore 大小: $SZ"
+          [ "$SZ" -gt 1000 ] || { echo "::error::keystore 还原失败"; exit 1; }
+
+      - name: Compute version
+        id: ver
+        run: |
+          VC=${{ github.run_number }}
+          echo "code=$VC" >> "$GITHUB_OUTPUT"
+          echo "name=1.0.$VC" >> "$GITHUB_OUTPUT"
+          echo "版本: 1.0.$VC (versionCode=$VC)"
+
       - name: Build release APK
         working-directory: ./child-android
-        run: gradle :app:assembleRelease --no-daemon --stacktrace
+        env:
+          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
+          KEY_PASS: ${{ secrets.KEY_PASS }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: |
+          gradle :app:assembleRelease --no-daemon --stacktrace \
+            -PversionCode=${{ steps.ver.outputs.code }} \
+            -PversionName=${{ steps.ver.outputs.name }}
 
-      - name: Upload APK
+      - name: Pack
+        working-directory: ./child-android/app/build/outputs/apk/release
+        run: |
+          ls -l
+          APK=$(ls *.apk | head -1)
+          mv "$APK" anxinban.apk
+          printf '{"versionCode":%s,"versionName":"%s","builtAt":"%s","sha":"%s"}' \
+            '${{ steps.ver.outputs.code }}' '${{ steps.ver.outputs.name }}' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '${{ github.sha }}' > version.json
+          cat version.json
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: AnxinbanKid-APK
-          path: child-android/app/build/outputs/apk/release/*.apk
+          name: AnxinbanKid-v${{ steps.ver.outputs.name }}
+          path: |
+            child-android/app/build/outputs/apk/release/anxinban.apk
+            child-android/app/build/outputs/apk/release/version.json
           if-no-files-found: error
+
+      - name: Summary
+        run: |
+          {
+            echo "### ✅ 编译成功"
+            echo ""
+            echo "| 项目 | 值 |"
+            echo "|---|---|"
+            echo "| 版本 | v${{ steps.ver.outputs.name }} |"
+            echo "| versionCode | ${{ steps.ver.outputs.code }} |"
+            echo "| 签名 | 固定证书 |"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -64,7 +64,7 @@ input{border:1px solid var(--line);border-radius:10px;padding:8px 10px;backgroun
 /* ══════════════ 状态 ══════════════ */
 let K = localStorage.getItem('k') || '';
 let D = [], RQ = [], AL = [], code = '', TAB = location.hash.replace('#','') || 'home';
-let AUTH_FAIL = 0, DEV = null;
+let AUTH_FAIL = 0, DEV = null, VER = null;
 const $ = s => document.getElementById(s);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 
@@ -445,6 +445,19 @@ function viewGuard(){
     </div>`;
   }
 
+  // 孩子端版本
+  if (VER) {
+    const localVc = dv.appVersionCode || 0;
+    const canUpdate = VER.versionCode > localVc;
+    h += `<div class="card"><h3>孩子端版本</h3>
+      <div class="kv"><span>当前版本</span><b>${dv.appVersionName ? 'v' + esc(dv.appVersionName) : '未知'}</b></div>
+      <div class="kv"><span>最新版本</span><span>v${esc(VER.versionName)}</span></div>
+      ${canUpdate
+        ? `<div class="sub" style="margin-top:8px;color:var(--bad)">有新版本可用，孩子打开孩子端时会收到更新提示</div>`
+        : `<div class="sub" style="margin-top:8px;color:var(--ok)">已是最新版本</div>`}
+    </div>`;
+  }
+
   // 手机截屏
   h += `<div class="card"><h3>手机截屏</h3>
     <div class="row"><div class="sub">最近截图：${DEV.shotTs ? ago(DEV.shotTs) : '暂无'}</div>
@@ -708,6 +721,7 @@ async function load(){
     const s = await api('state');
     D = s.devices || []; RQ = s.requests || []; AL = s.alerts || [];
     DEV = D[0] || null;
+    try { VER = await (await fetch('/api/version', {cache:'no-store'})).json(); } catch(e){}
     render();
   }catch(e){
     // 网络异常保持当前界面，不清空

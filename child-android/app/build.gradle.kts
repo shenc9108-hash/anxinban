@@ -8,15 +8,31 @@ android {
         applicationId = "com.anxinban.kid"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1"
+        // 由 CI 通过 -PversionCode / -PversionName 传入，本地构建时用默认值
+        versionCode = (project.findProperty("versionCode") as String?)?.toIntOrNull() ?: 1
+        versionName = (project.findProperty("versionName") as String?) ?: "1.0.0"
+    }
+
+    signingConfigs {
+        create("release") {
+            val ksPath = rootProject.file("keystore/anxinban.keystore")
+            if (ksPath.exists()) {
+                storeFile = ksPath
+                storePassword = System.getenv("KEYSTORE_PASS") ?: "AnxinbanStore2026"
+                keyAlias = System.getenv("KEY_ALIAS") ?: "anxinban"
+                keyPassword = System.getenv("KEY_PASS") ?: "AnxinbanKey2026"
+            }
+        }
     }
 
     buildTypes {
         release {
-            // 自用安装：使用 debug 签名，免去申请证书的麻烦。
-            // 若要上架应用商店或分发给他人，请改用正式签名。
-            signingConfig = signingConfigs.getByName("debug")
+            // 固定签名：保证每次编译签名一致，支持覆盖安装更新，
+            // DeviceAdmin / 无障碍授权 / 绑定数据在更新后全部保留。
+            signingConfig = if (rootProject.file("keystore/anxinban.keystore").exists())
+                signingConfigs.getByName("release")
+            else
+                signingConfigs.getByName("debug")
             isMinifyEnabled = false
         }
     }
@@ -26,4 +42,8 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
+}
+
+dependencies {
+    implementation("androidx.core:core-ktx:1.12.0")
 }
