@@ -44,7 +44,7 @@ const decodeNotes = raw => {
 };
 
 const devOf = req => { const t = (req.headers.authorization || '').slice(7); return Object.values(db.devices).find(d => d.token === t); };
-const pub = d => ({ id: d.id, model: d.model, rules: d.rules, battery: d.battery, seen: d.seen, used: d.used, loc: d.loc, fences: d.fences || [], inside: d.inside || {}, sessions: (d.sessions || []).slice(-200), adminDisabled: !!d.adminDisabled, device: d.device || null, track: (d.track || []).slice(-500), shotWanted: !!d.shotWanted, shotTs: d.shot ? d.shot.ts : 0, shotReady: !!d.shotReady });
+const pub = d => ({ id: d.id, model: d.model, alias: d.alias || null, rules: d.rules, battery: d.battery, seen: d.seen, used: d.used, loc: d.loc, fences: d.fences || [], inside: d.inside || {}, sessions: (d.sessions || []).slice(-200), adminDisabled: !!d.adminDisabled, device: d.device || null, track: (d.track || []).slice(-500), shotWanted: !!d.shotWanted, shotTs: d.shot ? d.shot.ts : 0, shotReady: !!d.shotReady });
 const dist = (a, b, c, d) => { const r = x => x * Math.PI / 180, dl = r(c - a), dg = r(d - b), h = Math.sin(dl / 2) ** 2 + Math.cos(r(a)) * Math.cos(r(c)) * Math.sin(dg / 2) ** 2; return 2 * 6371000 * Math.asin(Math.sqrt(h)); };
 const addAlert = (d, text) => { db.alerts = (db.alerts || []).concat({ ts: Date.now(), model: d.model, text }).slice(-50); };
 function checkFences(d) {
@@ -278,6 +278,16 @@ http.createServer(async (req, res) => {
       db.requests = (db.requests || []).filter(r => r.deviceId !== d.id);
       save();
       return send(res, 200, { ok: true });
+    }
+    if (a === 'rename') {
+      const d = db.devices[b.deviceId];
+      if (!d) return send(res, 404, { error: '设备不存在' });
+      const name = String(b.name ?? '').trim();
+      if (name.length > 20) return send(res, 400, { error: '名称最多 20 个字' });
+      // 允许清空，回落到设备真实型号
+      if (name) d.alias = name; else delete d.alias;
+      save();
+      return send(res, 200, { alias: d.alias || null });
     }
     if (a === 'version/set') {
       db.latestVersion = {

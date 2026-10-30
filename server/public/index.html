@@ -215,7 +215,7 @@ function viewHome(){
   if(DEV){
     const on = Date.now() - (DEV.seen||0) < 300000;
     h += `<div class="card">
-      <div class="row"><div><b>${esc(DEV.model||'孩子手机')}</b>
+      <div class="row"><div><b>${esc(DEV.alias||DEV.model||'孩子手机')}</b>
       <div class="sub">电量 ${DEV.battery ?? '-'}% · ${ago(DEV.seen)}</div></div>
       <span class="chip ${on?'ok':'bad'}">${on?'在线':'离线'}</span></div>
     </div>`;
@@ -237,7 +237,7 @@ function viewHome(){
                    onclick="pickDev('${d.id}')">
           <div style="flex:1;min-width:0">
             <div style="font-weight:${cur?700:500};color:${cur?'var(--pri)':'var(--tx)'}">
-              ${esc(d.model||'未知设备')}${cur?' ·当前':''}
+              ${esc(d.alias||d.model||'未知设备')}${cur?' ·当前':''}
             </div>
             <div class="sub" style="font-size:11px">
               电量 ${d.battery ?? '-'}% · ${ago(d.seen)}
@@ -732,17 +732,21 @@ function openMI(k){
       <h4>已绑定设备</h4>
       ${D.length
         ? D.map(dv => `<div class="kv" style="align-items:flex-start">
-            <span><b>${esc(dv.model||'未知设备')}</b>
+            <span><b>${esc(dv.alias || dv.model || '未知设备')}</b>
               <div class="sub" style="font-size:11px">电量 ${dv.battery ?? '-'}% · ${ago(dv.seen)}</div>
-              <div class="sub" style="font-size:11px">${dv.device && dv.device.appVersionName ? 'v' + esc(dv.device.appVersionName) : '版本未知'}</div>
+              <div class="sub" style="font-size:11px">${dv.device && dv.device.appVersionName ? 'v' + esc(dv.device.appVersionName) : '版本未知'}${dv.alias ? ' · ' + esc(dv.model || '') : ''}</div>
             </span>
-            <button class="g" style="color:var(--bad)" onclick="unbind('${dv.id}','${esc(dv.model||'设备')}')">解除绑定</button>
+            <span style="display:flex;gap:6px;flex-shrink:0">
+              <button class="g" onclick="renameDev('${dv.id}','${esc(dv.alias || dv.model || '设备').replace(/'/g, "\\'")}')">重命名</button>
+              <button class="g" style="color:var(--bad)" onclick="unbind('${dv.id}','${esc(dv.alias || dv.model || '设备').replace(/'/g, "\\'")}')">解除绑定</button>
+            </span>
           </div>`).join('')
         : `<div class="sub">还没有绑定设备</div>`}
 
       <h4 style="margin-top:18px">添加新设备</h4>
-      <p class="sub">在孩子端输入下面的绑定码，10 分钟内有效。</p>
-      ${code ? `<div style="font-size:34px;font-weight:700;letter-spacing:8px;text-align:center;margin:18px 0">${code}</div>` : ''}
+      <p class="sub">在孩子端输入下面的绑定码。<b>绑定码只能用一次</b>，10 分钟内有效。</p>
+      ${code ? `<div style="font-size:34px;font-weight:700;letter-spacing:8px;text-align:center;margin:18px 0">${code}</div>
+      <p class="sub" style="color:var(--ok);margin-bottom:10px">✓ 绑定成功后此码自动失效，无需再点一次</p>` : ''}
       <button class="f" style="width:100%" onclick="newCode()">生成绑定码</button>
 
       <div class="sub" style="margin-top:16px;padding-top:12px;border-top:1px solid var(--line)">
@@ -760,6 +764,21 @@ function openMI(k){
   const [title, body] = map[k] || ['', ''];
   sheet(`<div class="card"><h2>${title}</h2><div class="art">${body}</div></div>
     <button class="f" style="width:100%;margin-bottom:16px" onclick="closeSheet()">返回</button>`);
+}
+
+/* ── 设备重命名 ── */
+function renameDev(id, cur){
+  const name = prompt('给这台设备起个名字（最多 20 字）\n留空则恢复为设备型号：' + cur, cur || '');
+  if(name === null) return;                    // 用户取消
+  const v = String(name).trim();
+  if(v.length > 20){ alert('名称最多 20 个字'); return; }
+  api('rename', { method:'POST', body:{ deviceId:id, name:v } })
+    .then(r => {
+      if(r && r.error){ alert(r.error); return; }
+      load();
+      setTimeout(() => { openMI('bind'); }, 300);   // SHEET 是快照，重开弹层才会刷新
+    })
+    .catch(() => alert('重命名失败，请检查网络'));
 }
 
 function unbind(deviceId, name){
@@ -817,7 +836,7 @@ function render(){
                  border:1px solid ${on ? 'var(--pri)' : 'var(--line)'};
                  background:${on ? 'var(--pri)' : '#fff'};
                  color:${on ? '#fff' : 'var(--tx)'};font-weight:${on ? 600 : 400}">
-          ${esc(shortName(d.model))}${online ? '' : ' ·离线'}
+          ${esc(shortName(d.alias||d.model))}${online ? '' : ' ·离线'}
         </button>`;
       }).join('')}
     </div>`;
@@ -884,7 +903,7 @@ setInterval(() => { if(!document.hidden && K) load(); }, 5000);
 document.addEventListener('visibilitychange', () => { if(!document.hidden && K) load(); });
 
 /* onclick/onchange 只能调用全局作用域；const/function 中部分需显式导出到 window */
-try { Object.assign(window, { newCode, dec, addFence, delFence, addWin, delWin, setWin }); } catch (e) {}
+try { Object.assign(window, { newCode, dec, addFence, delFence, addWin, delWin, setWin, renameDev }); } catch (e) {}
 </script>
 </body>
 </html>
