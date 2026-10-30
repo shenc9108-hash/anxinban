@@ -67,8 +67,37 @@ class MainActivity : Activity() {
                 }
             }
         })
+        col.addView(btn("5. 允许家长截屏（可选）") {
+            if (ScreenCapture.isReady()) {
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("截屏已授权")
+                    .setMessage("家长可以查看孩子的屏幕内容。\n\n出于隐私考虑，建议仅在必要时使用。\n是否关闭截屏授权？")
+                    .setPositiveButton("关闭授权") { _, _ -> ScreenCapture.release(); toast("已关闭截屏授权"); refresh() }
+                    .setNegativeButton("保持开启", null)
+                    .show()
+            } else {
+                try {
+                    ScreenCapture.requestPermission(this, 9)
+                } catch (e: Exception) {
+                    toast("无法请求截屏权限：" + e.message)
+                }
+            }
+        })
         col.addView(btn("无服务器测试：载入演示规则") { Store.saveRules(this, demo); startGuard(); toast("微信限 1 分钟，用后会被拦截"); refresh() })
         setContentView(ScrollView(this).apply { addView(col) })
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(reqCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(reqCode, resultCode, data)
+        if (reqCode == 9) {
+            if (ScreenCapture.onPermissionResult(this, resultCode, data)) {
+                toast("截屏已授权，家长可以请求查看屏幕")
+            } else {
+                toast("已取消截屏授权")
+            }
+            refresh()
+        }
     }
 
     override fun onRequestPermissionsResult(code: Int, perms: Array<out String>, res: IntArray) {
@@ -88,6 +117,6 @@ class MainActivity : Activity() {
     private fun refresh() {
         val on = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
             ?.contains(packageName) == true
-        status.text = "绑定：" + (if (Store.token(this) != null) "已绑定" else "未绑定") + "\n无障碍：" + (if (on) "已开启" else "未开启") + "\n防卸载：" + (if (AdminReceiver.isActive(this)) "已启用" else "未启用")
+        status.text = "绑定：" + (if (Store.token(this) != null) "已绑定" else "未绑定") + "\n无障碍：" + (if (on) "已开启" else "未开启") + "\n防卸载：" + (if (AdminReceiver.isActive(this)) "已启用" else "未启用") + "\n截屏授权：" + (if (ScreenCapture.isReady()) "已开启" else "未开启")
     }
 }

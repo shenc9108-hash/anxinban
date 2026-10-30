@@ -1,0 +1,4 @@
+# 把域名改成你的，Caddy 会自动申请并续期 https 证书
+guard.example.com {
+    reverse_proxy localhost:3000
+}

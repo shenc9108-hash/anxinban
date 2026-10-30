@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#3556d8">
+<title>安心伴 · 家长端</title>
+<style>
+:root{--bg:#f2f4f0;--card:#fff;--tx:#1d2536;--tx2:#667085;--pri:#3556d8;--pri2:#e6ebff;--ok:#18865c;--ok2:#dff3ea;--bad:#c9302c;--bad2:#fde6e5;--warn2:#fff0d6;--line:#e3e6ec;--nav:60px}
+@media(prefers-color-scheme:dark){:root{--bg:#121620;--card:#1b2130;--tx:#eaedf5;--tx2:#9aa3b8;--pri:#8da4ff;--pri2:#26304f;--ok:#5fd3a2;--ok2:#17372b;--bad:#ff8b86;--bad2:#3d1c1c;--warn2:#3b2d14;--line:#2a3247}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;padding-bottom:calc(var(--nav) + env(safe-area-inset-bottom))}
+h2{font-size:17px;margin:0 0 12px}
+h3{font-size:15px;margin:0 0 8px}
+.sub{color:var(--tx2);font-size:13px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px}
+.row{display:flex;align-items:center;gap:10px;justify-content:space-between}
+.chip{display:inline-block;padding:2px 9px;border-radius:20px;font-size:12px;background:var(--pri2);color:var(--pri)}
+.chip.ok{background:var(--ok2);color:var(--ok)}
+.chip.bad{background:var(--bad2);color:var(--bad)}
+button{font:inherit;border:0;border-radius:10px;padding:8px 14px;background:var(--pri2);color:var(--pri);cursor:pointer}
+button.f{background:var(--pri);color:#fff}
+button.g{background:transparent;color:var(--tx2);padding:6px 10px}
+button:disabled{opacity:.45}
+input{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--card);color:var(--tx);min-width:0;font:inherit}
+#v{padding:14px 14px 0}
+.nav{position:fixed;left:0;right:0;bottom:0;height:calc(var(--nav) + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);background:var(--card);border-top:1px solid var(--line);display:flex;z-index:50}
+.nav a{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;text-decoration:none;color:var(--tx2);font-size:11px}
+.nav a.on{color:var(--pri)}
+.nav svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.bar{height:7px;background:var(--line);border-radius:4px;overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--pri);border-radius:4px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.kv{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}
+.kv:last-child{border-bottom:0}
+.st{display:inline-flex;align-items:center;gap:6px}
+.sw{width:44px;height:26px;border-radius:14px;background:var(--line);position:relative;transition:.2s;flex:0 0 auto}
+.sw.on{background:var(--ok)}
+.sw::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.2s}
+.sw.on::after{left:21px}
+.stepper{display:inline-flex;align-items:center;gap:8px}
+.stepper button{width:30px;height:30px;padding:0;border-radius:50%;background:var(--pri2);color:var(--pri);font-size:17px}
+.art{line-height:1.75}
+.art h4{margin:14px 0 6px;font-size:15px}
+.art p{margin:0 0 10px;color:var(--tx)}
+.empty{text-align:center;padding:36px 16px;color:var(--tx2)}
+.mi{display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--line);cursor:pointer}
+.mi:last-child{border-bottom:0}
+.mi .ico{width:34px;height:34px;border-radius:10px;background:var(--pri2);color:var(--pri);display:flex;align-items:center;justify-content:center;font-size:17px;flex:0 0 auto}
+.mi .txt{flex:1}
+</style>
+</head>
+<body>
+<div id="v"></div>
+<nav class="nav" id="nav" style="display:none">
+  <a href="#home" data-t="home"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg><span>首页</span></a>
+  <a href="#loc" data-t="loc"><svg viewBox="0 0 24 24"><path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.6"/></svg><span>位置</span></a>
+  <a href="#guard" data-t="guard"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 5-3.2 8.2-7 9-3.8-.8-7-4-7-9V6l7-3z"/><path d="m9 12 2 2 4-4"/></svg><span>守护</span></a>
+  <a href="#log" data-t="log"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg><span>记录</span></a>
+  <a href="#me" data-t="me"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M4.5 21c1.2-3.8 4-5.6 7.5-5.6S18.3 17.2 19.5 21"/></svg><span>我的</span></a>
+</nav>
+
+<script>
+/* ══════════════ 状态 ══════════════ */
+let K = localStorage.getItem('k') || '';
+let D = [], RQ = [], AL = [], code = '', TAB = location.hash.replace('#','') || 'home';
+let AUTH_FAIL = 0, DEV = null;
+const $ = s => document.getElementById(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+
+/* ══════════════ 网络 ══════════════ */
+async function api(p, o = {}) {
+  let r;
+  try {
+    r = await fetch('/api/parent/' + p, {
+      method: o.method || 'GET',
+      headers: { 'x-parent-key': K, 'Content-Type': 'application/json' },
+      body: o.body ? JSON.stringify(o.body) : undefined,
+      cache: 'no-store'
+    });
+  } catch (e) { throw 'net'; }
+
+  if (r.status === 401) {
+    AUTH_FAIL++;
+    if (AUTH_FAIL >= 3) {                       // 连续3次才登出，避免网络抖动
+      localStorage.setItem('k_last', K);
+      K = ''; localStorage.removeItem('k'); AUTH_FAIL = 0;
+      render(); throw 'auth';
+    }
+    throw 'net';
+  }
+  AUTH_FAIL = 0;
+  if (!r.ok) throw 'net';
+  return r.json();
+}
+
+/* ══════════════ 工具 ══════════════ */
+const pad = n => String(n).padStart(2,'0');
+function hhmm(ts){ const d=new Date(ts); return pad(d.getHours())+':'+pad(d.getMinutes()); }
+function ago(t){
+  if(!t) return '从未联网';
+  const s=(Date.now()-t)/1000;
+  if(s<90) return '刚刚';
+  if(s<3600) return Math.round(s/60)+' 分钟前';
+  if(s<86400) return Math.round(s/3600)+' 小时前';
+  return Math.round(s/86400)+' 天前';
+}
+function dur(ms){
+  const m=Math.round(ms/60000);
+  if(m>=60) return Math.floor(m/60)+' 小时 '+(m%60)+' 分';
+  return (m||1)+' 分钟';
+}
+const APP = {
+  'com.tencent.mm':'微信','com.tencent.mobileqq':'QQ','tv.danmaku.bili':'哔哩哔哩',
+  'com.ss.android.ugc.aweme':'抖音','com.smile.gifmaker':'快手','com.tencent.tmgp.sgame':'王者荣耀',
+  'com.tencent.tmgp.pubgmhd':'和平精英','com.taobao.taobao':'淘宝','com.jingdong.app.mall':'京东',
+  'com.xingin.xhs':'小红书','com.zhihu.android':'知乎','com.ss.android.article.news':'今日头条',
+  'com.netease.cloudmusic':'网易云音乐','com.tencent.qqmusic':'QQ音乐','com.youku.phone':'优酷',
+  'com.qiyi.video':'爱奇艺','com.tencent.qqlive':'腾讯视频','com.autonavi.minimap':'高德地图',
+  'com.baidu.BaiduMap':'百度地图','com.eg.android.AlipayGphone':'支付宝','com.tencent.wework':'企业微信',
+  'com.dragon.read':'番茄小说','com.ss.android.ugc.live':'抖音极速版','com.baidu.searchbox':'百度',
+  'com.UCMobile':'UC浏览器','com.android.chrome':'Chrome','com.huawei.browser':'华为浏览器',
+  'com.doubao.app':'豆包','com.larus.nova':'豆包','com.baidu.duer':'小度','com.iflytek.inputmethod':'讯飞输入法'
+};
+const appName = p => APP[p] || p.split('.').pop();
+
+/* 会话按天过滤：0=今天 7=近7天 30=近30天 */
+function sessionsIn(days){
+  const dev = DEV; if(!dev) return [];
+  const ss = dev.sessions || [];
+  if(days === 0){
+    const t0 = new Date(); t0.setHours(0,0,0,0);
+    return ss.filter(x => (x.end||0) >= t0.getTime());
+  }
+  return ss.filter(x => (x.end||0) >= Date.now() - days*86400000);
+}
+function groupByApp(list){
+  const m = {};
+  list.forEach(x => { m[x.pkg] = (m[x.pkg]||0) + (x.ms||0); });
+  return Object.entries(m).sort((a,b)=>b[1]-a[1]);
+}
+
+/* ══════════════ 路由 ══════════════ */
+function go(t){ location.hash = t; }
+window.addEventListener('hashchange', () => {
+  TAB = location.hash.replace('#','') || 'home';
+  render();
+});
+
+/* ══════════════ 登录 ══════════════ */
+function doLogin(){
+  const v = ($('kk').value || '').trim();
+  if(!v){ alert('请输入家长密钥'); return; }
+  K = v; AUTH_FAIL = 0;
+  localStorage.setItem('k', K);
+  localStorage.setItem('k_last', K);
+  load();
+}
+
+function viewLogin(){
+  const last = localStorage.getItem('k_last') || '';
+  return `<div class="card"><h3>家长登录</h3>
+    <div class="row" style="margin-top:8px">
+      <input id="kk" type="password" placeholder="家长密钥" value="${esc(last)}" style="flex:1" onkeydown="if(event.key==='Enter')doLogin()">
+      <button class="f" onclick="doLogin()">进入</button>
+    </div>
+    <div class="sub" style="margin-top:10px">登录状态会保存在本机浏览器，无需重复输入。</div>
+  </div>`;
+}
+
+/* ══════════════ 遮罩层（二级页） ══════════════ */
+let SHEET = null;
+function sheet(html){ SHEET = html; render(); }
+function closeSheet(){ SHEET = null; render(); }
+
+/* ══════════════ 首页 ══════════════ */
+const ARTICLES = [
+  { id:'a1', t:'3-6 岁，每天屏幕时间别超过 1 小时', s:'世界卫生组织建议',
+    b:`<p>世界卫生组织在《5 岁以下儿童身体活动、久坐行为和睡眠指南》中提出：</p>
+       <h4>分龄建议</h4>
+       <p>• <b>2 岁以内</b>：不建议接触电子屏幕（视频通话除外）<br>
+          • <b>2-3 岁</b>：每天不超过 30 分钟，需家长陪同<br>
+          • <b>3-4 岁</b>：每天不超过 1 小时，分段进行<br>
+          • <b>5-6 岁</b>：每天不超过 1 小时，优先保证户外活动</p>
+       <h4>为什么重要</h4>
+       <p>过早、过量的屏幕暴露会影响语言发育、注意力和睡眠质量。屏幕的强光会抑制褪黑素分泌，睡前使用尤其有害。</p>
+       <h4>怎么做到</h4>
+       <p>1. 用「定时锁定」把睡前 1 小时设为禁用时段<br>
+          2. 把学习类 App 加入白名单，避免一刀切<br>
+          3. 家长自己也要少玩手机，孩子会模仿</p>` },
+  { id:'a2', t:'孩子沉迷短视频，试试这 4 个方法', s:'实操经验',
+    b:`<p>短视频的推荐算法就是为「停留时长」设计的，成年人尚且难以自控，何况孩子。</p>
+       <h4>1. 设置硬上限，而不是靠自觉</h4>
+       <p>用「应用限时」给抖音、快手设 20 分钟。到点自动拦截，比反复提醒有效得多。</p>
+       <h4>2. 提供替代选择</h4>
+       <p>孩子刷视频往往是因为「没事干」。准备一些替代活动：乐高、拼图、漫画书、户外运动。</p>
+       <h4>3. 别在孩子面前刷</h4>
+       <p>研究发现，家长屏幕使用时间与孩子屏幕时间高度相关。</p>
+       <h4>4. 不要突然没收</h4>
+       <p>突然断网、抢手机会引发激烈对抗。提前约定规则，用工具执行，比临时发火有效。</p>` },
+  { id:'a3', t:'如何和孩子约定手机使用规则', s:'亲子沟通',
+    b:`<p>规则如果只是家长单方面制定，孩子会想办法绕过。一起商量，执行率才高。</p>
+       <h4>开一次家庭会议</h4>
+       <p>把手机使用写进家庭约定，双方签字。内容包括：</p>
+       <p>• 每天可用时长<br>• 什么时段不能用（吃饭、睡前、写作业时）<br>• 哪些 App 优先（学习类）<br>• 违反约定的后果</p>
+       <h4>给孩子一点弹性</h4>
+       <p>允许孩子申请「额外 15 分钟」，但要说明用途。安心伴的「申请再用」功能就是为此设计——孩子主动申请，家长审批，比单方面封锁更少冲突。</p>
+       <h4>定期复盘</h4>
+       <p>每周看一次使用记录，和孩子一起讨论哪里需要调整。让孩子参与决策，他才会认同规则。</p>` },
+];
+
+function viewHome(){
+  let h = `<h2>首页</h2>`;
+  // 设备概览
+  if(DEV){
+    const on = Date.now() - (DEV.seen||0) < 300000;
+    h += `<div class="card">
+      <div class="row"><div><b>${esc(DEV.model||'孩子手机')}</b>
+      <div class="sub">电量 ${DEV.battery ?? '-'}% · ${ago(DEV.seen)}</div></div>
+      <span class="chip ${on?'ok':'bad'}">${on?'在线':'离线'}</span></div>
+    </div>`;
+  } else {
+    h += `<div class="card"><div class="empty">还没有绑定孩子手机<br><button class="f" style="margin-top:12px" onclick="go('me')">去绑定</button></div></div>`;
+  }
+  // 育儿资料
+  h += `<h2 style="margin-top:18px">育儿资料</h2>`;
+  h += ARTICLES.map(a => `<div class="card" onclick="openArt('${a.id}')" style="cursor:pointer">
+    <div class="row"><b>${esc(a.t)}</b><span style="color:var(--tx2)">›</span></div>
+    <div class="sub" style="margin-top:4px">${esc(a.s)}</div>
+  </div>`).join('');
+  return h;
+}
+
+function openArt(id){
+  const a = ARTICLES.find(x => x.id === id);
+  sheet(`<div class="card"><h2>${esc(a.t)}</h2><div class="sub" style="margin-bottom:12px">${esc(a.s)}</div>
+    <div class="art">${a.b}</div></div>
+    <button class="f" style="width:100%;margin-bottom:16px" onclick="closeSheet()">返回</button>`);
+}
+
+/* ══════════════ 位置 ══════════════ */
+// WGS84 -> GCJ02（高德/腾讯地图需要）
+function gcj(lat,lng){
+  const a=6378245.0, ee=0.00669342162296594323, PI=Math.PI;
+  function tl(x,y){let r=-100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));
+    r+=(20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3; r+=(20*Math.sin(y*PI)+40*Math.sin(y/3*PI))*2/3;
+    r+=(160*Math.sin(y/12*PI)+320*Math.sin(y*PI/30))*2/3; return r;}
+  function tg(x,y){let r=300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));
+    r+=(20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3; r+=(20*Math.sin(x*PI)+40*Math.sin(x/3*PI))*2/3;
+    r+=(150*Math.sin(x/12*PI)+300*Math.sin(x/30*PI))*2/3; return r;}
+  let dLat=tl(lng-105,lat-35), dLng=tg(lng-105,lat-35);
+  const rad=lat/180*PI; let m=Math.sin(rad); m=1-ee*m*m; const sm=Math.sqrt(m);
+  return [lat+dLat*180/((a*(1-ee))/(m*sm)*PI), lng+dLng*180/(a/sm*Math.cos(rad)*PI)];
+}
+
+function viewLoc(){
+  let h = `<h2>位置</h2>`;
+  if(!DEV){ return h + `<div class="card"><div class="empty">还没有绑定设备</div></div>`; }
+  const l = DEV.loc;
+  if(!l){
+    return h + `<div class="card"><div class="empty">孩子端还没有上报位置<br><span class="sub">请在孩子手机上允许「始终允许」定位权限</span></div></div>`;
+  }
+  const [glat, glng] = gcj(l.lat, l.lng);
+  h += `<div class="card">
+    <div class="row"><div>
+      <b>当前位置</b>
+      <div class="sub">${l.lat.toFixed(5)}, ${l.lng.toFixed(5)}</div>
+      <div class="sub">精度约 ${Math.round(l.acc||0)} 米 · ${ago(l.ts)}</div>
+    </div>
+    <a href="https://uri.amap.com/marker?position=${glng.toFixed(6)},${glat.toFixed(6)}&name=孩子位置&src=anxinban&coordinate=gaode&callnative=1" target="_blank" rel="noopener"><button class="f">地图查看</button></a>
+    </div>
+    <div style="margin-top:12px;border-radius:12px;overflow:hidden;border:1px solid var(--line)">
+      <a href="https://uri.amap.com/marker?position=${glng.toFixed(6)},${glat.toFixed(6)}&name=孩子位置&src=anxinban&coordinate=gaode&callnative=1" target="_blank" rel="noopener">
+      <div style="background:linear-gradient(135deg,var(--pri2),var(--card));padding:36px 12px;text-align:center">
+        <div style="font-size:30px">📍</div>
+        <div style="margin-top:6px;color:var(--pri)">点击查看地图</div>
+        <div class="sub">高德地图 · ${glat.toFixed(4)}, ${glng.toFixed(4)}</div>
+      </div></a>
+    </div>
+  </div>`;
+
+  // 电子围栏
+  const fs = DEV.fences || [];
+  h += `<div class="card"><h3>电子围栏</h3>`;
+  if(!fs.length){
+    h += `<div class="sub">还没有设置围栏。孩子进出围栏时会收到提醒。</div>`;
+  } else {
+    h += fs.map(f => {
+      const inn = (DEV.inside||{})[f.id];
+      return `<div class="row" style="padding:8px 0;border-bottom:1px solid var(--line)">
+        <div><b>${esc(f.name)}</b><div class="sub">半径 ${f.r} 米</div></div>
+        <div class="st"><span class="chip ${inn?'ok':'bad'}">${inn?'在围栏内':'已离开'}</span>
+        <button class="g" onclick="delFence('${f.id}')">删</button></div>
+      </div>`;
+    }).join('');
+  }
+  h += `<div class="row" style="margin-top:10px">
+    <input id="fn" placeholder="围栏名，如 家" style="flex:1">
+    <input id="fr" type="number" placeholder="半径米" style="width:78px" value="200">
+    <button class="f" onclick="addFence()">添加</button>
+  </div>
+  <div class="sub" style="margin-top:6px">以当前位置为中心创建围栏</div></div>`;
+
+  // 出行情况
+  const trk = (DEV.track || []).filter(p => p.lat && p.lng);
+  if(trk.length >= 2){
+    // 计算总里程
+    let km = 0;
+    for(let i=1;i<trk.length;i++){
+      const a=trk[i-1], b=trk[i];
+      const R=6371, dLat=(b.lat-a.lat)*Math.PI/180, dLng=(b.lng-a.lng)*Math.PI/180;
+      const h2 = Math.sin(dLat/2)**2 + Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)**2;
+      km += R*2*Math.atan2(Math.sqrt(h2), Math.sqrt(1-h2));
+    }
+    const pts = trk.slice(-300);
+    const lats = pts.map(p=>p.lat), lngs = pts.map(p=>p.lng);
+    const minLat=Math.min(...lats), maxLat=Math.max(...lats);
+    const minLng=Math.min(...lngs), maxLng=Math.max(...lngs);
+    const spanLat = maxLat-minLat || 0.001, spanLng = maxLng-minLng || 0.001;
+
+    // 画成简易轨迹图（SVG）
+    const W=300, H=160, PAD=14;
+    const coords = pts.map(p=>{
+      const x = PAD + (p.lng-minLng)/spanLng * (W-PAD*2);
+      const y = H-PAD - (p.lat-minLat)/spanLat * (H-PAD*2);
+      return [x,y];
+    });
+    const path = coords.map((c,i)=>(i?'L':'M')+c[0].toFixed(1)+','+c[1].toFixed(1)).join(' ');
+    const first = coords[0], last = coords[coords.length-1];
+
+    h += `<div class="card"><h3>出行情况（近 3 天）</h3>
+      <div class="kv"><span>记录点数</span><b>${trk.length} 个</b></div>
+      <div class="kv"><span>移动距离</span><b>${km.toFixed(2)} 公里</b></div>
+      <div class="kv"><span>时段</span><span class="sub">${hhmm(trk[0].ts)} - ${hhmm(trk[trk.length-1].ts)}</span></div>
+      <div style="margin-top:10px;background:var(--pri2);border-radius:12px;padding:6px">
+        <svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block">
+          <path d="${path}" fill="none" stroke="var(--pri)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" opacity="0.85"/>
+          <circle cx="${first[0].toFixed(1)}" cy="${first[1].toFixed(1)}" r="5" fill="var(--ok)"/>
+          <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="5" fill="var(--bad)"/>
+        </svg>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <span class="sub">● 起点</span><span class="sub" style="color:var(--bad)">● 当前位置</span>
+      </div>
+    </div>`;
+  } else if(DEV.loc){
+    h += `<div class="card"><h3>出行情况</h3><div class="sub">轨迹点不足，孩子移动后会记录</div></div>`;
+  }
+
+  // 围栏提醒记录
+  if(AL.length){
+    h += `<div class="card"><h3>围栏提醒</h3>` + AL.slice(0,8).map(a =>
+      `<div class="kv"><span>${esc(a.text)}</span><span class="sub">${ago(a.ts)}</span></div>`).join('') + `</div>`;
+  }
+  return h;
+}
+
+const addFence = () => api('fence', { method:'POST', body:{
+  deviceId: DEV.id, name: ($('fn').value||'').trim() || '围栏', r: +$('fr').value || 200
+}}).then(r => { if(r.error) alert(r.error); load(); });
+
+const delFence = id => api('fence/delete', { method:'POST', body:{ deviceId:DEV.id, id } }).then(load);
+
+/* ══════════════ 守护 ══════════════ */
+function viewGuard(){
+  if(!DEV) return `<h2>守护</h2><div class="card"><div class="empty">还没有绑定设备</div></div>`;
+  const r = DEV.rules || {};
+  const id = DEV.id;
+  const on = Date.now() - (DEV.seen||0) < 300000;
+
+  let h = `<h2>守护</h2>`;
+
+  // 告警
+  if(DEV.adminDisabled){
+    h += `<div class="card" style="background:var(--bad2)"><b>⚠️ 防卸载保护已关闭</b>
+      <div class="sub" style="margin-top:4px">孩子取消了设备管理器授权，现在可以卸载孩子端。请检查孩子手机。</div></div>`;
+  }
+
+  // 手机状态
+  h += `<div class="card"><h3>手机状态</h3>
+    <div class="kv"><span>管控状态</span><span class="chip ${on?'ok':'bad'}">${on?'正在守护':'已离线'}</span></div>
+    <div class="kv"><span>剩余电量</span><b>${DEV.battery ?? '-'}%</b></div>
+    <div class="kv"><span>最后联网</span><span>${ago(DEV.seen)}</span></div>
+    <div class="kv"><span>设备型号</span><span>${esc(DEV.model||'-')}</span></div>
+    <div class="kv"><span>防卸载</span><span class="chip ${DEV.adminDisabled?'bad':'ok'}">${DEV.adminDisabled?'已关闭':'已启用'}</span></div>
+  </div>`;
+
+  // 锁定控制
+  h += `<div class="card"><h3>锁定控制</h3>
+    <div class="row" style="padding:6px 0"><div><b>临时锁定</b><div class="sub">立即锁住手机，孩子无法使用</div></div>
+      <div class="sw ${r.locked?'on':''}" onclick="setRule('locked',${!r.locked})"></div></div>
+    <div class="row" style="padding:6px 0;border-top:1px solid var(--line)"><div><b>定时锁定</b><div class="sub">睡眠时段自动锁定</div></div>
+      <div class="sw ${r.timed?'on':''}" onclick="setRule('timed',${!r.timed})"></div></div>
+    ${r.timed ? `<div class="row" style="padding:8px 0">
+      <span class="sub">锁定时段</span>
+      <div class="st"><input type="number" min="0" max="23" value="${r.sleepStart}" style="width:60px" onchange="setRule('sleepStart',+this.value)"> 点
+      <span>—</span>
+      <input type="number" min="0" max="23" value="${r.sleepEnd}" style="width:60px" onchange="setRule('sleepEnd',+this.value)"> 点</div>
+    </div>` : ''}
+  </div>`;
+
+  // 时长限制
+  h += `<div class="card"><h3>时间限制</h3>
+    <div class="row"><span>每日娱乐总时长</span>
+      <div class="stepper"><button onclick="setRule('daily',Math.max(0,${r.daily||0}-10))">−</button>
+      <b>${r.daily||0} 分</b><button onclick="setRule('daily',${(r.daily||0)+10})">+</button></div></div>
+  </div>`;
+
+  // 应用限时
+  const lim = r.limits || {};
+  h += `<div class="card"><h3>应用限时</h3>`;
+  const es = Object.entries(lim);
+  if(!es.length) h += `<div class="sub">还没有设置应用限时</div>`;
+  else h += es.map(([pk, m]) =>
+    `<div class="kv"><span><b>${esc(appName(pk))}</b><div class="sub" style="font-size:11px">${esc(pk)}</div></span>
+      <div class="st"><div class="stepper"><button onclick="setLim('${pk}',-5)">−</button><b>${m} 分</b>
+      <button onclick="setLim('${pk}',5)">+</button></div>
+      <button class="g" onclick="delLim('${pk}')">删</button></div></div>`).join('');
+  h += `<div class="row" style="margin-top:10px">
+    <input id="pk" placeholder="包名，如 com.tencent.mm" style="flex:1">
+    <input id="mn" type="number" placeholder="分钟" style="width:70px">
+    <button class="f" onclick="addLim()">加</button></div>
+    <div class="sub" style="margin-top:6px">常用：微信 com.tencent.mm · 抖音 com.ss.android.ugc.aweme</div>
+  </div>`;
+
+  // 白名单
+  h += `<div class="card"><h3>学习白名单</h3>
+    <div class="sub" style="margin-bottom:8px">白名单内应用不受限时和锁定影响</div>
+    <div class="row"><input id="wl" value="${esc((r.whitelist||[]).join(','))}" placeholder="包名，逗号分隔" style="flex:1"
+      onchange="setRule('whitelist',this.value.split(',').map(s=>s.trim()).filter(Boolean))">
+    </div></div>`;
+
+  // 设备情况
+  const dv = DEV.device || {};
+  const gb = n => n ? (n / 1073741824).toFixed(1) + ' GB' : '-';
+  if (Object.keys(dv).length) {
+    const usedPct = dv.storageTotal ? Math.round((1 - dv.storageFree / dv.storageTotal) * 100) : 0;
+    h += `<div class="card"><h3>设备情况</h3>
+      <div class="kv"><span>品牌型号</span><span>${esc((dv.brand||'') + ' ' + (dv.model||''))}</span></div>
+      <div class="kv"><span>系统版本</span><span>Android ${esc(dv.android||'-')}</span></div>
+      <div class="kv"><span>存储空间</span><span>${gb(dv.storageTotal - (dv.storageFree||0))} / ${gb(dv.storageTotal)}</span></div>
+      <div style="margin-top:8px"><div class="bar"><i style="width:${usedPct}%;background:${usedPct>85?'var(--bad)':'var(--pri)'}"></i></div>
+      <div class="sub" style="margin-top:4px">已用 ${usedPct}%</div></div>
+      ${dv.memTotal ? `<div class="kv" style="margin-top:8px"><span>运行内存</span><span>剩余 ${gb(dv.memAvail)} / ${gb(dv.memTotal)}</span></div>` : ''}
+    </div>`;
+  }
+
+  // 手机截屏
+  h += `<div class="card"><h3>手机截屏</h3>
+    <div class="row"><div class="sub">最近截图：${DEV.shotTs ? ago(DEV.shotTs) : '暂无'}</div>
+      <button class="f" onclick="askShot()">${DEV.shotWanted ? '等待孩子端…' : '请求截屏'}</button></div>
+    <div id="shotBox" style="margin-top:10px"></div>
+    <div class="sub" style="margin-top:8px">需要孩子在手机上点击「允许截屏」授权，且每分钟最多 1 张。</div>
+  </div>`;
+
+  // 今日使用概况
+  const today = groupByApp(sessionsIn(0));
+  const total = today.reduce((a,b)=>a+b[1],0);
+  h += `<div class="card"><h3>今日使用概况</h3>`;
+  if(!today.length){
+    h += `<div class="sub">今天还没有使用记录</div>`;
+  } else {
+    h += `<div class="sub" style="margin-bottom:10px">共 ${dur(total)} · ${today.length} 个应用</div>`;
+    h += today.slice(0,6).map(([pk, ms]) => {
+      const pct = Math.round(ms/total*100);
+      return `<div style="margin-bottom:9px">
+        <div class="row" style="margin-bottom:3px"><b>${esc(appName(pk))}</b><span class="sub">${dur(ms)}</span></div>
+        <div class="bar"><i style="width:${pct}%"></i></div></div>`;
+    }).join('');
+  }
+  h += `</div>`;
+
+  // 使用概况（近 7 / 30 日）
+  h += statCard('近 7 日使用概况', 7);
+  h += statCard('近 30 日使用概况', 30);
+
+  return h;
+}
+
+let shotTimer = null;
+async function askShot(){
+  try{
+    await api('shot/request', { method:'POST', body:{ deviceId: DEV.id } });
+    render();
+    // 轮询最多 60 秒
+    let n = 0;
+    clearInterval(shotTimer);
+    shotTimer = setInterval(async () => {
+      n++;
+      try{
+        const r = await api('shot/get', { method:'POST', body:{ deviceId: DEV.id } });
+        if(r && r.img){ clearInterval(shotTimer); showShot(r); }
+      }catch(e){}
+      if(n > 20) clearInterval(shotTimer);
+    }, 3000);
+  }catch(e){ alert('请求失败，请检查网络'); }
+}
+
+function showShot(r){
+  const box = document.getElementById('shotBox');
+  if(!box) return;
+  box.innerHTML = `<img src="data:image/jpeg;base64,${r.img}" style="width:100%;border-radius:12px;border:1px solid var(--line)" alt="截屏">
+    <div class="sub" style="margin-top:6px">截图时间：${hhmm(r.ts)}</div>`;
+}
+
+async function loadShot(){
+  if(!DEV || !DEV.shotTs) return;
+  try{
+    const r = await api('shot/get', { method:'POST', body:{ deviceId: DEV.id } });
+    if(r && r.img) showShot(r);
+  }catch(e){}
+}
+
+function statCard(title, days){
+  const list = groupByApp(sessionsIn(days));
+  const total = list.reduce((a,b)=>a+b[1],0);
+  if(!total) return `<div class="card"><h3>${title}</h3><div class="sub">暂无数据</div></div>`;
+  // 按天汇总
+  const byDay = {};
+  sessionsIn(days).forEach(x=>{
+    const d = new Date(x.end||0);
+    const key = `${d.getMonth()+1}/${d.getDate()}`;
+    byDay[key] = (byDay[key]||0) + (x.ms||0);
+  });
+  const days_ = Object.entries(byDay).slice(-30);
+  const maxDay = Math.max(...days_.map(d=>d[1]), 1);
+
+  return `<div class="card"><h3>${title}</h3>
+    <div class="sub" style="margin-bottom:10px">合计 ${dur(total)} · ${list.length} 个应用</div>
+    ${list.slice(0,5).map(([pk,ms])=>{
+      const pct = Math.round(ms/total*100);
+      return `<div class="row" style="margin-bottom:4px"><span>${esc(appName(pk))}</span><span class="sub">${dur(ms)}</span></div>
+        <div class="bar" style="margin-bottom:8px"><i style="width:${pct}%"></i></div>`;
+    }).join('')}
+    <div class="sub" style="margin:12px 0 6px;border-top:1px solid var(--line);padding-top:10px">按天分布</div>
+    <div style="display:flex;align-items:flex-end;gap:3px;height:70px">
+      ${days_.map(([k,v])=>`<div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;height:100%" title="${k} ${dur(v)}">
+        <div style="height:${Math.max(3,Math.round(v/maxDay*100))}%;background:var(--pri);border-radius:2px"></div></div>`).join('')}
+    </div>
+  </div>`;
+}
+
+function setRule(k, v){
+  api('rules', { method:'POST', body:{ deviceId: DEV.id, rules:{ [k]: v } } }).then(load);
+}
+function addLim(){
+  const pk = ($('pk').value||'').trim(), mn = +$('mn').value || 0;
+  if(!pk){ alert('请填写包名'); return; }
+  if(!mn){ alert('请填写分钟数'); return; }
+  api('rules', { method:'POST', body:{ deviceId: DEV.id, rules:{ limits:{ ...(DEV.rules.limits||{}), [pk]: mn } } } }).then(load);
+}
+function setLim(pk, d){
+  const cur = (DEV.rules.limits||{})[pk] || 0;
+  const v = Math.max(0, cur + d);
+  api('rules', { method:'POST', body:{ deviceId: DEV.id, rules:{ limits:{ ...(DEV.rules.limits||{}), [pk]: v } } } }).then(load);
+}
+function delLim(pk){
+  const m = { ...(DEV.rules.limits||{}) }; delete m[pk];
+  api('rules', { method:'POST', body:{ deviceId: DEV.id, rules:{ limits: m } } }).then(load);
+}
+
+/* ══════════════ 记录 ══════════════ */
+function viewLog(){
+  if(!DEV) return `<h2>记录</h2><div class="card"><div class="empty">还没有绑定设备</div></div>`;
+  let h = `<h2>记录</h2>`;
+
+  const today = groupByApp(sessionsIn(0));
+  const total = today.reduce((a,b)=>a+b[1],0);
+
+  h += `<div class="card"><h3>今天</h3>`;
+  if(!today.length){
+    h += `<div class="empty">今天还没有使用记录<br><span class="sub">孩子正常使用手机后会自动上传</span></div>`;
+  } else {
+    h += `<div class="sub" style="margin-bottom:12px">共使用 ${dur(total)}，${today.length} 个应用</div>`;
+    h += today.map(([pk, ms], i) => {
+      const pct = Math.round(ms/total*100);
+      return `<div style="margin-bottom:12px">
+        <div class="row" style="margin-bottom:4px">
+          <span><span class="chip">${i+1}</span> <b>${esc(appName(pk))}</b></span>
+          <b>${dur(ms)}</b></div>
+        <div class="bar"><i style="width:${pct}%"></i></div>
+        <div class="sub" style="margin-top:2px;font-size:11px">${esc(pk)}</div>
+      </div>`;
+    }).join('');
+  }
+  h += `</div>`;
+
+  // 会话明细
+  const list = sessionsIn(7).slice().sort((a,b)=>(b.end||0)-(a.end||0));
+  if(list.length){
+    h += `<div class="card"><h3>使用明细（近 7 天）</h3>`;
+    h += list.slice(0, 50).map((x, i) => {
+      const d = new Date(x.end||0);
+      const day = `${d.getMonth()+1}/${d.getDate()}`;
+      return `<div class="kv"><span><b>${esc(appName(x.pkg))}</b>
+        <div class="sub" style="font-size:11px">${day} ${hhmm(x.start)} - ${hhmm(x.end)}</div></span>
+        <span class="chip">${dur(x.ms)}</span></div>`;
+    }).join('');
+    h += `</div>`;
+  }
+  return h;
+}
+
+/* ══════════════ 我的 ══════════════ */
+function viewMe(){
+  let h = `<h2>我的</h2>`;
+  h += `<div class="card">
+    <div class="row"><div><b>家长账号</b><div class="sub">已登录</div></div>
+    <button class="g" onclick="logout()">退出</button></div>
+  </div>`;
+
+  const items = [
+    ['📖','使用帮助', 'help'],
+    ['🔔','我的消息', 'msg'],
+    ['📱','绑定设备', 'bind'],
+    ['👑','兑换 VIP', 'vip'],
+    ['💬','联系客服', 'kf'],
+    ['ℹ️','关于我们', 'about'],
+  ];
+  h += `<div class="card">` + items.map(([i, t, k]) =>
+    `<div class="mi" onclick="openMI('${k}')"><div class="ico">${i}</div><div class="txt">${t}</div><span style="color:var(--tx2)">›</span></div>`
+  ).join('') + `</div>`;
+
+  h += `<div style="text-align:center;padding:18px 0 8px" class="sub">安心伴 · 家长端 v1.0</div>`;
+  return h;
+}
+
+function logout(){
+  if(!confirm('确定退出登录？')) return;
+  localStorage.removeItem('k'); K = ''; render();
+}
+
+function openMI(k){
+  const map = {
+    help: ['使用帮助', `
+      <h4>1. 孩子端怎么安装？</h4><p>在 GitHub Actions 下载 APK，传到孩子手机安装。安装后打开，填写服务器地址和绑定码。</p>
+      <h4>2. 为什么没有使用记录？</h4><p>需要孩子在手机上开启「无障碍服务」，这是识别前台应用的前提。开启路径：设置 → 无障碍 → 安心伴孩子端。</p>
+      <h4>3. 为什么位置不更新？</h4><p>位置权限需要选「始终允许」，并在系统设置里关闭电池优化，否则后台会被系统杀掉。</p>
+      <h4>4. 规则多久生效？</h4><p>孩子端每 30 秒同步一次规则，最长延迟 30 秒。</p>
+      <h4>5. 孩子把手机关机了怎么办？</h4><p>关机后无法监控。家长端会显示「离线」状态和最后联网时间。</p>
+      <h4>6. 如何卸载孩子端？</h4><p>先到 设置 → 安全 → 设备管理应用，取消激活「安心伴孩子端」，然后才能卸载。</p>`],
+    msg: ['我的消息', AL.length
+      ? AL.map(a => `<div class="kv"><span>${esc(a.text)}</span><span class="sub">${ago(a.ts)}</span></div>`).join('')
+      : `<div class="empty">暂无消息</div>`],
+    bind: ['绑定设备', `
+      <p>在孩子端输入下面的绑定码完成绑定，10 分钟内有效。</p>
+      ${code ? `<div style="font-size:34px;font-weight:700;letter-spacing:8px;text-align:center;margin:18px 0">${code}</div>` : ''}
+      <button class="f" style="width:100%" onclick="newCode()">生成绑定码</button>
+      ${DEV ? `<div class="sub" style="margin-top:14px">已绑定：${esc(DEV.model)}</div>` : ''}`],
+    vip: ['兑换 VIP', `<div class="empty"><div style="font-size:40px">👑</div><div style="margin-top:10px">VIP 功能开发中</div><div class="sub" style="margin-top:6px">敬请期待</div></div>`],
+    kf: ['联系客服', `<div class="empty"><div style="font-size:40px">💬</div><div style="margin-top:10px">客服功能开发中</div><div class="sub" style="margin-top:6px">敬请期待</div></div>`],
+    about: ['关于我们', `
+      <p><b>安心伴</b>是一个开源的家长端管控工具，帮助家长了解孩子的手机使用情况，建立健康的使用习惯。</p>
+      <h4>已实现</h4>
+      <p>• 应用使用时长统计与限时<br>• 睡眠时段自动锁定<br>• 学习白名单<br>• 实时位置与电子围栏<br>• 孩子申请加时、家长审批<br>• 防卸载保护</p>
+      <h4>声明</h4>
+      <p class="sub">本工具仅供家长对自己监护的未成年子女使用。请勿用于他人设备，否则可能违反《个人信息保护法》等相关法律。</p>`],
+  };
+  const [title, body] = map[k] || ['', ''];
+  sheet(`<div class="card"><h2>${title}</h2><div class="art">${body}</div></div>
+    <button class="f" style="width:100%;margin-bottom:16px" onclick="closeSheet()">返回</button>`);
+}
+
+const newCode = () => api('code').then(r => { code = r.code; render(); });
+
+/* ══════════════ 渲染 ══════════════ */
+function render(){
+  const n = $('nav');
+  if(!K){ $('v').innerHTML = viewLogin(); n.style.display = 'none'; return; }
+
+  if(SHEET){
+    $('v').innerHTML = SHEET;
+    n.style.display = 'none';
+    return;
+  }
+  n.style.display = 'flex';
+  document.querySelectorAll('.nav a').forEach(a => a.classList.toggle('on', a.dataset.t === TAB));
+
+  // 待审批提示（任何页面都显示）
+  let alertHTML = '';
+  if(RQ.length){
+    alertHTML = RQ.map(r => `<div class="card" style="background:var(--warn2)">
+      <b>孩子申请再用 ${r.minutes} 分钟</b>
+      <div class="sub" style="margin:4px 0 10px">${esc(appName(r.pkg))}</div>
+      <div class="row"><button class="f" style="flex:1" onclick="dec('${r.id}',true)">同意</button>
+      <button style="flex:1" onclick="dec('${r.id}',false)">拒绝</button></div></div>`).join('');
+  }
+
+  let body = '';
+  if(TAB === 'home') body = viewHome();
+  else if(TAB === 'loc') body = viewLoc();
+  else if(TAB === 'guard') body = viewGuard();
+  else if(TAB === 'log') body = viewLog();
+  else body = viewMe();
+
+  $('v').innerHTML = alertHTML + body;
+  if(TAB === 'guard' && DEV && DEV.shotTs) loadShot();
+}
+
+const dec = (rid, ok) => api('requests', { method:'POST', body:{ id:rid, approve:ok } }).then(load);
+
+/* ══════════════ 数据加载 ══════════════ */
+let busy = false;
+async function load(){
+  if(!K || busy) return;
+  busy = true;
+  try{
+    const s = await api('state');
+    D = s.devices || []; RQ = s.requests || []; AL = s.alerts || [];
+    DEV = D[0] || null;
+    render();
+  }catch(e){
+    // 网络异常保持当前界面，不清空
+  }finally{
+    busy = false;
+  }
+}
+
+load();
+// 页面隐藏时暂停轮询（省电），回到前台立即刷新
+setInterval(() => { if(!document.hidden && K) load(); }, 5000);
+document.addEventListener('visibilitychange', () => { if(!document.hidden && K) load(); });
+</script>
+</body>
+</html>

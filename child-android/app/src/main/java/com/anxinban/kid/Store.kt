@@ -95,4 +95,62 @@ object Store {
     }
 
     fun isAdminDisabled(c: Context): Boolean = p(c).getBoolean("admin_disabled", false)
+
+    // ===== 位置轨迹 =====
+    // 格式：ts|lat|lng|acc ，多条以 \n 分隔，只保留当天最多 500 条
+    private fun trackKey() = "trk_" + day()
+
+    fun track(c: Context): String = p(c).getString(trackKey(), "") ?: ""
+
+    /** 位置变化时追加一个点（相距 30 米以上或超过 5 分钟才记，避免冗余）。 */
+    fun addTrack(c: Context, lat: Double, lng: Double, acc: Float) {
+        val now = System.currentTimeMillis()
+        val list = track(c).split("\n").filter { it.isNotBlank() }.toMutableList()
+
+        // 与上一个点比较
+        if (list.isNotEmpty()) {
+            val last = list.last().split("|")
+            if (last.size == 4) {
+                val lt = last[0].toLongOrNull() ?: 0L
+                val llat = last[1].toDoubleOrNull() ?: 0.0
+                val llng = last[2].toDoubleOrNull() ?: 0.0
+                val dist = distance(lat, lng, llat, llng)
+                if (dist < 30 && now - lt < 300_000L) return
+            }
+        }
+
+        list.add("$now|$lat|$lng|$acc")
+        while (list.size > 500) list.removeAt(0)
+        p(c).edit().putString(trackKey(), list.joinToString("\n")).apply()
+    }
+
+    /** 取出当天轨迹点，供心跳上报。 */
+    fun trackJson(c: Context): org.json.JSONArray {
+        val arr = org.json.JSONArray()
+        track(c).split("\n").filter { it.isNotBlank() }.forEach { ln ->
+            val a = ln.split("|")
+            if (a.size == 4) {
+                arr.put(org.json.JSONObject()
+                    .put("ts", a[0].toLongOrNull() ?: 0L)
+                    .put("lat", a[1].toDoubleOrNull() ?: 0.0)
+                    .put("lng", a[2].toDoubleOrNull() ?: 0.0)
+                    .put("acc", a[3].toFloatOrNull() ?: 0f))
+            }
+        }
+        return arr
+    }
+
+    /** 上报成功后清空已发送轨迹。 */
+    fun clearTrack(c: Context) = p(c).edit().putString(trackKey(), "").apply()
+
+    /** 两点间距离（米），Haversine。 */
+    private fun distance(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Double {
+        val r = 6371000.0
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLng = Math.toRadians(lng2 - lng1)
+        val a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                Math.sin(dLng / 2) * Math.sin(dLng / 2)
+        return r * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    }
 }

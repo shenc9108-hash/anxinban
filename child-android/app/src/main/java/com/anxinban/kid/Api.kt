@@ -51,8 +51,29 @@ object Api {
         if (ses.length() > 0) hb.put("sessions", ses)
         // 上报防卸载状态（设备管理器是否被取消）
         hb.put("adminDisabled", !AdminReceiver.isActive(c))
+        // 设备基础信息（型号/系统/存储/内存）
+        try { hb.put("device", DeviceInfo.collect(c)) } catch (_: Exception) {}
+        // 位置轨迹
+        val trk = Store.trackJson(c)
+        if (trk.length() > 0) hb.put("track", trk)
         val ok = call("POST", "/heartbeat", hb, t)
-        if (ok != null) Store.clearSessions(c)   // 上报成功才清空，避免丢数据
+        if (ok != null) {                         // 上报成功才清空，避免丢数据
+            Store.clearSessions(c)
+            Store.clearTrack(c)
+        }
+
+        // 家长请求截屏：已授权则截一张上传
+        if (ok?.optBoolean("wantShot") == true && ScreenCapture.isReady()) {
+            val img = ScreenCapture.capture(c)
+            if (img != null) {
+                call("POST", "/heartbeat", JSONObject()
+                    .put("battery", hb.optInt("battery"))
+                    .put("usedMinutes", JSONObject())
+                    .put("ts", System.currentTimeMillis())
+                    .put("shot", img), t)
+            }
+        }
+
         call("GET", "/rules", null, t)?.let { Store.saveRules(c, it.toString()) }
     }
 

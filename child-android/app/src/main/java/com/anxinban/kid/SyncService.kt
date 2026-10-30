@@ -14,7 +14,10 @@ class SyncService : Service() {
     private var listening = false
 
     private val listener = object : LocationListener {
-        override fun onLocationChanged(l: Location) { Store.saveLoc(this@SyncService, l.latitude, l.longitude, l.accuracy) }
+        override fun onLocationChanged(l: Location) {
+            Store.saveLoc(this@SyncService, l.latitude, l.longitude, l.accuracy)
+            Store.addTrack(this@SyncService, l.latitude, l.longitude, l.accuracy)
+        }
         override fun onStatusChanged(p: String?, s: Int, e: Bundle?) {}
         override fun onProviderEnabled(p: String) {}
         override fun onProviderDisabled(p: String) {}
@@ -42,7 +45,10 @@ class SyncService : Service() {
             for (p in listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER))
                 if (lm.isProviderEnabled(p)) {
                     lm.requestLocationUpdates(p, 30_000L, 10f, listener, Looper.getMainLooper())
-                    lm.getLastKnownLocation(p)?.let { Store.saveLoc(this, it.latitude, it.longitude, it.accuracy) }
+                    lm.getLastKnownLocation(p)?.let {
+                        Store.saveLoc(this, it.latitude, it.longitude, it.accuracy)
+                        Store.addTrack(this, it.latitude, it.longitude, it.accuracy)
+                    }
                 }
             listening = true
         } catch (e: SecurityException) {}
