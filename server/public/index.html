@@ -120,7 +120,7 @@ const APP = {
   'com.baidu.BaiduMap':'百度地图','com.eg.android.AlipayGphone':'支付宝','com.tencent.wework':'企业微信',
   'com.dragon.read':'番茄小说','com.ss.android.ugc.live':'抖音极速版','com.baidu.searchbox':'百度',
   'com.UCMobile':'UC浏览器','com.android.chrome':'Chrome','com.huawei.browser':'华为浏览器',
-  'com.doubao.app':'豆包','com.larus.nova':'豆包','com.baidu.duer':'小度','com.iflytek.inputmethod':'讯飞输入法'
+  'com.doubao.app':'豆包','com.larus.nova':'番茄免费小说','com.baidu.duer':'小度','com.iflytek.inputmethod':'讯飞输入法'
 };
 const appName = p => APP[p] || p.split('.').pop();
 
@@ -450,18 +450,32 @@ function viewGuard(){
   const lim = r.limits || {};
   h += `<div class="card"><h3>应用限时</h3>`;
   const es = Object.entries(lim);
-  if(!es.length) h += `<div class="sub">还没有设置应用限时</div>`;
+  if(!es.length) h += `<div class="sub" style="margin-bottom:8px">还没有设置应用限时</div>`;
   else h += es.map(([pk, m]) =>
     `<div class="kv"><span><b>${esc(appName(pk))}</b><div class="sub" style="font-size:11px">${esc(pk)}</div></span>
       <div class="st"><div class="stepper"><button onclick="setLim('${pk}',-5)">−</button><b>${m} 分</b>
       <button onclick="setLim('${pk}',5)">+</button></div>
       <button class="g" onclick="delLim('${pk}')">删</button></div></div>`).join('');
-  h += `<div class="row" style="margin-top:10px">
-    <input id="pk" placeholder="包名，如 com.tencent.mm" style="flex:1">
-    <input id="mn" type="number" placeholder="分钟" style="width:70px">
-    <button class="f" onclick="addLim()">加</button></div>
-    <div class="sub" style="margin-top:6px">常用：微信 com.tencent.mm · 抖音 com.ss.android.ugc.aweme</div>
-  </div>`;
+
+  // 从孩子手机真实使用记录里挑候选应用（按今日时长排序，已设置的不再列出）
+  const cand = appCandidates().filter(x => lim[x.pkg] === undefined);
+  if(cand.length){
+    h += `<div class="sub" style="margin-top:12px;margin-bottom:6px">孩子手机上的应用（按今日使用时长排序），点一下即可添加：</div>`;
+    h += cand.slice(0, 12).map(x =>
+      `<div class="kv" style="cursor:pointer" onclick="addLimPkg('${x.pkg}')">
+        <span><b>${esc(appName(x.pkg))}</b><div class="sub" style="font-size:11px">今日 ${dur(x.ms)}</div></span>
+        <span class="chip">+ 添加</span>
+      </div>`).join('');
+  } else if(!Object.keys(DEV.used||{}).length && !(DEV.sessions||[]).length){
+    h += `<div class="sub" style="margin-top:10px">孩子手机还没有上报使用记录。等它联网使用一会儿后再来，就能直接选择应用。</div>`;
+  }
+
+  h += `<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">
+    <div class="sub" style="margin-bottom:6px">找不到想要的？手动填包名：</div>
+    <div class="row">
+      <input id="pk" placeholder="如 com.tencent.mm" style="flex:1">
+      <input id="mn" type="number" placeholder="分钟" style="width:70px">
+      <button class="f" onclick="addLim()">加</button></div></div>`;
 
   // 白名单
   h += `<div class="card"><h3>学习白名单</h3>
@@ -629,6 +643,49 @@ function setWin(i, key, v){
 function setRule(k, v){
   api('rules', { method:'POST', body:{ deviceId: DEV.id, rules:{ [k]: v } } }).then(load);
 }
+/* ── 应用限时：候选应用 ── */
+// 系统自身/输入法/桌面等无需限时的包名，不列为候选
+const SYS_PKG = new Set([
+  'android','com.android.settings','com.android.packageinstaller','com.android.systemui',
+  'com.android.chrome','com.android.providers.settings','com.android.permissioncontroller',
+  'com.baidu.input_huawei','com.touchtype.swiftkey','com.iflytek.inputmethod',
+  'com.huawei.intelligent','com.vivo.globalsearch','com.iqoo.powersaving','com.vivo.upslide'
+]);
+
+/** 汇总孩子手机今天用过/用着的应用，按时长降序。 */
+function appCandidates(){
+  if(!DEV) return [];
+  const map = {};
+  const acc = (pkg, ms) => { if(pkg) map[pkg] = (map[pkg] || 0) + (ms || 0); };
+  // 会话时间线只取今天的
+  const t0 = new Date(); t0.setHours(0,0,0,0);
+  (DEV.sessions || []).forEach(s => {
+    if((s.end || 0) >= t0.getTime()) acc(s.pkg, s.ms);
+  });
+  // 兜底：used 里有记录但会话已过期/未上报时间线的
+  Object.entries(DEV.used || {}).forEach(([pkg, ms]) => { if(map[pkg] === undefined) acc(pkg, ms); });
+
+  const all = Object.entries(map).map(([pkg, ms]) => ({ pkg, ms })).sort((a, b) => b.ms - a.ms);
+  // 优先展示非系统应用；若过滤后为空（孩子还没用过娱乐类应用），
+  // 则退回展示全部，避免出现空白列表让家长无从下手。
+  const real = all.filter(x => !SYS_PKG.has(x.pkg));
+  return real.length ? real : all;
+}
+
+/** 从候选列表点选后直接添加，默认 30 分钟。 */
+function addLimPkg(pkg){
+  const cur = (DEV && DEV.rules && DEV.rules.limits) || {};
+  setLim2(pkg, 30);
+}
+
+function setLim2(pkg, minutes){
+  const cur = (DEV && DEV.rules && DEV.rules.limits) || {};
+  const next = Object.assign({}, cur);
+  const m = Math.max(0, Math.round(minutes || 0));
+  if(m > 0) next[pkg] = m; else delete next[pkg];
+  api('rules', { method:'POST', body:{ deviceId: DEV.id, rules:{ limits: next } } }).then(load);
+}
+
 function addLim(){
   const pk = ($('pk').value||'').trim(), mn = +$('mn').value || 0;
   if(!pk){ alert('请填写包名'); return; }
@@ -903,7 +960,7 @@ setInterval(() => { if(!document.hidden && K) load(); }, 5000);
 document.addEventListener('visibilitychange', () => { if(!document.hidden && K) load(); });
 
 /* onclick/onchange 只能调用全局作用域；const/function 中部分需显式导出到 window */
-try { Object.assign(window, { newCode, dec, addFence, delFence, addWin, delWin, setWin, renameDev }); } catch (e) {}
+try { Object.assign(window, { newCode, dec, addFence, delFence, addWin, delWin, setWin, renameDev, addLimPkg }); } catch (e) {}
 </script>
 </body>
 </html>
