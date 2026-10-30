@@ -3,6 +3,11 @@ name: Build Kid APK
 on:
   push:
     branches: [ main, master ]
+    # 只改后端/网页时不必重新编译孩子端 APK，
+    # 否则每 push 一次 versionCode 就会 +1 并发版一次。
+    paths:
+      - 'child-android/**'
+      - '.github/workflows/build-apk.yml'
   workflow_dispatch:
 
 jobs:
