@@ -124,7 +124,10 @@ http.createServer(async (req, res) => {
       versionName: vn,
       apkUrl: '/apk/anxinban.apk',
       size: sz,
-      notes: req.headers['x-notes'] ? decodeURIComponent(req.headers['x-notes']) : '',
+      notes: (() => {
+        try { return decodeURIComponent(req.headers['x-notes'] || ''); }
+        catch (_) { return Buffer.from(req.headers['x-notes'] || '', 'latin1').toString('utf8'); }
+      })(),
       updatedAt: Date.now(),
     };
     save();
@@ -169,7 +172,10 @@ http.createServer(async (req, res) => {
       versionName,
       apkUrl: '/apk/anxinban.apk',
       size: sz,
-      notes: req.headers['x-notes'] ? decodeURIComponent(req.headers['x-notes']) : '',
+      notes: (() => {
+        try { return decodeURIComponent(req.headers['x-notes'] || ''); }
+        catch (_) { return Buffer.from(req.headers['x-notes'] || '', 'latin1').toString('utf8'); }
+      })(),
       updatedAt: Date.now(),
     };
     save();
