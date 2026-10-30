@@ -20,6 +20,7 @@ class GuardService : AccessibilityService() {
     private val h = Handler(Looper.getMainLooper())
     private var cur: String? = null
     private var last = 0L
+    private var sessionStart = 0L   // 当前应用本次会话起点（墙钟时间）
     private var overlay: View? = null
 
     private val skip by lazy {
@@ -39,15 +40,25 @@ class GuardService : AccessibilityService() {
     override fun onAccessibilityEvent(e: AccessibilityEvent) {
         if (e.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = e.packageName?.toString() ?: return
-        if (pkg in skip) { account(); cur = null; return }
-        account(); cur = pkg; check(pkg)
+        if (pkg in skip) { account(); cur = null; sessionStart = 0L; return }
+        account(); cur = pkg; sessionStart = System.currentTimeMillis(); check(pkg)
     }
 
     /** 把上次到现在的时间记到当前应用上（息屏不计时）。 */
     private fun account() {
         val now = SystemClock.elapsedRealtime()
         val on = (getSystemService(POWER_SERVICE) as PowerManager).isInteractive
-        cur?.let { if (on && now - last in 0..120_000) Store.addMs(this, it, now - last) }
+        cur?.let {
+            val dur = now - last
+            if (on && dur in 0..120_000) {
+                Store.addMs(this, it, dur)
+                // 会话时间线：起点用墙钟时间推算，保证与家长端时区一致
+                val endWall = System.currentTimeMillis()
+                if (sessionStart == 0L) sessionStart = endWall - dur
+                Store.addSession(this, it, sessionStart, endWall, dur)
+                sessionStart = endWall
+            }
+        }
         last = now
     }
 

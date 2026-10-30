@@ -48,6 +48,25 @@ class MainActivity : Activity() {
         col.addView(btn("3. 开启位置权限（请选“始终允许”）") {
             requestPermissions(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION), 2)
         })
+        col.addView(btn("4. 防止卸载（激活设备管理器）") {
+            if (AdminReceiver.isActive(this)) {
+                toast("已启用。如需卸载，请先到「设置 → 安全 → 设备管理应用」取消激活")
+            } else {
+                try {
+                    startActivityForResult(
+                        Intent(android.app.admin.DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
+                            .putExtra(android.app.admin.DevicePolicyManager.EXTRA_DEVICE_ADMIN, AdminReceiver.component(this))
+                            .putExtra(
+                                android.app.admin.DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                                "激活后可防止孩子误卸载守护应用。家长如需卸载，请先到「设置 → 安全 → 设备管理应用」取消激活。"
+                            ),
+                        4
+                    )
+                } catch (e: Exception) {
+                    toast("无法打开设备管理器：" + e.message)
+                }
+            }
+        })
         col.addView(btn("无服务器测试：载入演示规则") { Store.saveRules(this, demo); startGuard(); toast("微信限 1 分钟，用后会被拦截"); refresh() })
         setContentView(ScrollView(this).apply { addView(col) })
     }
@@ -69,6 +88,6 @@ class MainActivity : Activity() {
     private fun refresh() {
         val on = Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
             ?.contains(packageName) == true
-        status.text = "绑定：${if (Store.token(this) != null) "已绑定" else "未绑定"}\n无障碍：${if (on) "已开启" else "未开启"}"
+        status.text = "绑定：" + (if (Store.token(this) != null) "已绑定" else "未绑定") + "\n无障碍：" + (if (on) "已开启" else "未开启") + "\n防卸载：" + (if (AdminReceiver.isActive(this)) "已启用" else "未启用")
     }
 }

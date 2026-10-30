@@ -52,4 +52,47 @@ object Store {
     fun saveBind(c: Context, token: String) = p(c).edit().putString("token", token).apply()
     fun usedMs(c: Context, pkg: String) = p(c).getLong("u_${day()}_$pkg", 0)
     fun addMs(c: Context, pkg: String, ms: Long) = p(c).edit().putLong("u_${day()}_$pkg", usedMs(c, pkg) + ms).apply()
+
+    // ===== 使用记录时间线 =====
+    // 会话记录格式：start|end|pkg|ms ，多条以 \n 分隔，只保留当天最近 300 条
+    private fun sesKey() = "ses_" + day()
+
+    fun sessions(c: Context): String = p(c).getString(sesKey(), "") ?: ""
+
+    /** 记录一段使用会话（应用切换或息屏时调用）。 */
+    fun addSession(c: Context, pkg: String, startMs: Long, endMs: Long, durMs: Long) {
+        if (durMs < 5_000L) return
+        val line = "$startMs|$endMs|$pkg|$durMs"
+        val old = sessions(c).split("\n").filter { it.isNotBlank() }.toMutableList()
+        old.add(line)
+        while (old.size > 300) old.removeAt(0)
+        p(c).edit().putString(sesKey(), old.joinToString("\n")).apply()
+    }
+
+    /** 取出当天会话，供心跳上报。 */
+    fun sessionJson(c: Context): org.json.JSONArray {
+        val arr = org.json.JSONArray()
+        sessions(c).split("\n").filter { it.isNotBlank() }.forEach { ln ->
+            val parts = ln.split("|")
+            if (parts.size == 4) {
+                arr.put(org.json.JSONObject()
+                    .put("start", parts[0].toLongOrNull() ?: 0L)
+                    .put("end", parts[1].toLongOrNull() ?: 0L)
+                    .put("pkg", parts[2])
+                    .put("ms", parts[3].toLongOrNull() ?: 0L))
+            }
+        }
+        return arr
+    }
+
+    /** 上报成功后清掉已发送的记录，避免重复。 */
+    fun clearSessions(c: Context) = p(c).edit().putString(sesKey(), "").apply()
+
+    // ===== 防卸载状态 =====
+    /** 记录设备管理器是否被取消激活（家长端可据此发现被绕过）。 */
+    fun disableActive(c: Context, disabled: Boolean) {
+        p(c).edit().putBoolean("admin_disabled", disabled).putLong("admin_ts", System.currentTimeMillis()).apply()
+    }
+
+    fun isAdminDisabled(c: Context): Boolean = p(c).getBoolean("admin_disabled", false)
 }

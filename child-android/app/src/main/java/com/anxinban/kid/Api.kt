@@ -46,7 +46,11 @@ object Api {
             .put("battery", bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY))
             .put("usedMinutes", used).put("ts", System.currentTimeMillis())
         Store.loc(c)?.let { hb.put("lat", it.first).put("lng", it.second).put("acc", it.third.toDouble()) }
-        call("POST", "/heartbeat", hb, t)
+        // 附带当天使用记录时间线
+        val ses = Store.sessionJson(c)
+        if (ses.length() > 0) hb.put("sessions", ses)
+        val ok = call("POST", "/heartbeat", hb, t)
+        if (ok != null) Store.clearSessions(c)   // 上报成功才清空，避免丢数据
         call("GET", "/rules", null, t)?.let { Store.saveRules(c, it.toString()) }
     }
 
