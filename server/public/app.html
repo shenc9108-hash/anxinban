@@ -398,6 +398,10 @@ function viewGuard(){
   const r = DEV.rules || {};
   const id = DEV.id;
   const on = Date.now() - (DEV.seen||0) < 300000;
+  // 多时段：优先用 sleepWindows；老数据没有该字段时，用 sleepStart/sleepEnd 自动迁移成一个时段
+  const sleepList = Array.isArray(r.sleepWindows) && r.sleepWindows.length
+    ? r.sleepWindows.map(w => ({ s: +w.s, e: +w.e }))
+    : [{ s: r.sleepStart ?? 21, e: r.sleepEnd ?? 7 }];
 
   let h = `<h2>守护</h2>`;
 
@@ -422,11 +426,16 @@ function viewGuard(){
       <div class="sw ${r.locked?'on':''}" onclick="setRule('locked',${!r.locked})"></div></div>
     <div class="row" style="padding:6px 0;border-top:1px solid var(--line)"><div><b>定时锁定</b><div class="sub">睡眠时段自动锁定</div></div>
       <div class="sw ${r.timed?'on':''}" onclick="setRule('timed',${!r.timed})"></div></div>
-    ${r.timed ? `<div class="row" style="padding:8px 0">
-      <span class="sub">锁定时段</span>
-      <div class="st"><input type="number" min="0" max="23" value="${r.sleepStart}" style="width:60px" onchange="setRule('sleepStart',+this.value)"> 点
-      <span>—</span>
-      <input type="number" min="0" max="23" value="${r.sleepEnd}" style="width:60px" onchange="setRule('sleepEnd',+this.value)"> 点</div>
+    ${r.timed ? `<div style="padding:10px 0">
+      <div class="sub" style="margin-bottom:8px">锁定时段：可添加多个，任一命中即锁定。起止相同表示跨夜，例如 21 点 → 7 点。</div>
+      ${sleepList.map((w,i) => `<div class="st" style="margin-bottom:8px">
+        <input type="number" min="0" max="23" value="${w.s}" style="width:60px" onchange="setWin(${i},'s',+this.value)"> 点
+        <span>—</span>
+        <input type="number" min="0" max="23" value="${w.e}" style="width:60px" onchange="setWin(${i},'e',+this.value)"> 点
+        <button class="g" style="color:var(--bad);margin-left:6px" onclick="delWin(${i})">删除</button>
+      </div>`).join('')}
+      ${sleepList.length ? '' : `<div class="sub" style="margin-bottom:8px">还没有时段，点下面添加</div>`}
+      <button style="width:100%" onclick="addWin()">+ 添加时段</button>
     </div>` : ''}
   </div>`;
 
@@ -584,6 +593,39 @@ function statCard(title, days){
   </div>`;
 }
 
+/* ── 多时段锁定 ── */
+function curWins(){
+  const r = (DEV && DEV.rules) || {};
+  return Array.isArray(r.sleepWindows) && r.sleepWindows.length
+    ? r.sleepWindows.map(w => ({ s: +w.s, e: +w.e }))
+    : [{ s: r.sleepStart ?? 21, e: r.sleepEnd ?? 7 }];
+}
+function saveWins(list){
+  api('rules', { method:'POST', body:{ deviceId: DEV.id, rules:{ sleepWindows: list } } }).then(load);
+}
+function addWin(){
+  const list = curWins();
+  // 新时段默认紧接上一个时段结束，避免和已有区间重叠
+  const prev = list[list.length - 1] || { s: 21, e: 7 };
+  const st = prev.e;
+  const en = (st + 2) % 24;
+  list.push({ s: st, e: en });
+  saveWins(list);
+}
+function delWin(i){
+  const list = curWins();
+  if(list.length <= 1){ alert('至少保留一个时段；如需取消定时锁定，请关闭上面的开关。'); return; }
+  list.splice(i, 1);
+  saveWins(list);
+}
+function setWin(i, key, v){
+  const list = curWins();
+  if(!list[i]) return;
+  if(!(v >= 0 && v <= 23)){ alert('小时必须是 0 到 23 之间的整数'); load(); return; }
+  list[i][key] = v;
+  saveWins(list);
+}
+
 function setRule(k, v){
   api('rules', { method:'POST', body:{ deviceId: DEV.id, rules:{ [k]: v } } }).then(load);
 }
@@ -737,7 +779,7 @@ const newCode = () => api('code').then(r => { code = r.code; render(); });
 /* ══════════════ 渲染 ══════════════ */
 function render(){
   const n = $('nav');
-  if(!K){ $('v').innerHTML = viewLogin(); n.style.display = 'none'; return; }
+  if(!K || AUTH_FAIL >= 3){ $('v').innerHTML = viewLogin(); n.style.display = 'none'; return; }
 
   if(SHEET){
     $('v').innerHTML = SHEET;
@@ -805,7 +847,7 @@ const dec = (rid, ok) => api('requests', { method:'POST', body:{ id:rid, approve
 /* ══════════════ 数据加载 ══════════════ */
 let busy = false;
 async function load(){
-  if(!K || busy) return;
+  if(!K || busy){ if(!busy) render(); return; }
   busy = true;
   try{
     const s = await api('state');
@@ -822,7 +864,9 @@ async function load(){
     try { VER = await (await fetch('/api/version', {cache:'no-store'})).json(); } catch(e){}
     render();
   }catch(e){
-    // 网络异常保持当前界面，不清空
+    // 首次加载失败（密钥失效/网络异常）也必须出界面，否则一直白屏
+    const vEl = document.getElementById('v');
+    if(vEl && !vEl.innerHTML.trim()){ AUTH_FAIL = 3; render(); }
   }finally{
     busy = false;
   }
@@ -832,6 +876,9 @@ load();
 // 页面隐藏时暂停轮询（省电），回到前台立即刷新
 setInterval(() => { if(!document.hidden && K) load(); }, 5000);
 document.addEventListener('visibilitychange', () => { if(!document.hidden && K) load(); });
+
+/* onclick/onchange 只能调用全局作用域；const/function 中部分需显式导出到 window */
+try { Object.assign(window, { newCode, dec, addFence, delFence, addWin, delWin, setWin }); } catch (e) {}
 </script>
 </body>
 </html>
