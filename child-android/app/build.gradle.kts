@@ -18,9 +18,9 @@ android {
             if (ksPath.exists()) {
                 storeFile = ksPath
                 // PKCS12 只支持一个口令：key 口令必须与 store 口令一致
-                storePassword=[REDACTED]"KEYSTORE_PASS") ?: "AnxinbanStore2026"
+                storePassword=System.getenv("KEYSTORE_PASS") ?: "AnxinbanStore2026"
                 keyAlias = System.getenv("KEY_ALIAS") ?: "anxinban"
-                keyPassword=[REDACTED]"KEYSTORE_PASS") ?: "AnxinbanStore2026"
+                keyPassword=System.getenv("KEYSTORE_PASS") ?: "AnxinbanStore2026"
             }
         }
     }
