@@ -10,7 +10,6 @@ data class Rules(
     val locked: Boolean = false, val timed: Boolean = true,
     val sleepStart: Int = 21, val sleepEnd: Int = 7, val daily: Int = 60,
     // 多时段锁定：起止均为「当日第几分钟」(0..1439)，精确到分。
-    // 老版本只存小时，解析时会自动乘以 60。
     val sleepWindows: List<Pair<Int, Int>> = emptyList(),
     val limits: Map<String, Int> = emptyMap(),   // 包名 -> 每日限时（分钟）
     val whitelist: Set<String> = emptySet()      // 学习类白名单，始终可用
@@ -31,39 +30,51 @@ data class Rules(
     /** 命中任一锁定时段即返回 true。参数为当日第几分钟。 */
     private fun inSleepWindow(now: Int): Boolean {
         if (sleepWindows.isEmpty()) {
-            // 老数据只有小时：按整点区间处理
             val h = now / 60
             return h >= sleepStart || h < sleepEnd
         }
-        return sleepWindows.any { (st, en) ->
-            if (st == en) false                       // 起止相同视为无效
-            else if (st < en) now >= st && now < en   // 同一天内，如 12:30 -> 14:00
-            else now >= st || now < en                // 跨夜，如 22:32 -> 07:15
+        for (w in sleepWindows) {
+            val st = w.first
+            val en = w.second
+            if (st == en) continue
+            if (st < en) {
+                if (now >= st && now < en) return true
+            } else {
+                if (now >= st || now < en) return true
+            }
         }
+        return false
     }
 
     companion object {
-        /** 把家长端下发的值解析成「当日第几分钟」。支持 22:32 字符串、1352、或旧的 22。 */
-        private fun toMinute(v: Any?, def: Int = -1): Int = when (v) {
-            is Number -> { val n = v.toInt(); if (n in 0..23) n * 60 else if (n in 0..1439) n else def }
-            is String -> {
-                val t = v.trim()
-                when {
-                    t.contains(':') -> {
-                        // "22:32" 或 "22:32:00"
-                        val parts = t.split(':')
-                        val h = parts.getOrNull(0)?.toIntOrNull()
-                        val m = parts.getOrNull(1)?.toIntOrNull()
-                        if (h != null && m != null && h in 0..23 && m in 0..59) h * 60 + m else def
-                    }
-                    t.isNotEmpty() && t.all { it.isDigit() } -> {
-                        val n = t.toInt()
-                        if (n in 0..23) n * 60 else if (n in 0..1439) n else def
-                    }
-                    else -> def
-                }
+        /**
+         * 把家长端下发的值解析成「当日第几分钟」。
+         * 支持 "22:32" 字符串、整数 1352、以及旧的整数小时 22。
+         * 解析失败返回 -1。
+         */
+        private fun toMinute(v: Any?): Int {
+            if (v == null) return -1
+            if (v is Number) {
+                val n = v.toInt()
+                if (n < 0) return -1
+                if (n <= 23) return n * 60      // 旧数据：小时
+                if (n <= 1439) return n          // 分钟
+                return -1
             }
-            else -> def
+            val t = v.toString().trim()
+            if (t.isEmpty()) return -1
+            if (t.contains(":")) {
+                val parts = t.split(":")
+                val h = parts.getOrNull(0)?.toIntOrNull() ?: return -1
+                val mm = parts.getOrNull(1)?.toIntOrNull() ?: return -1
+                if (h < 0 || h > 23 || mm < 0 || mm > 59) return -1
+                return h * 60 + mm
+            }
+            val n = t.toIntOrNull() ?: return -1
+            if (n < 0) return -1
+            if (n <= 23) return n * 60
+            if (n <= 1439) return n
+            return -1
         }
 
         fun parse(s: String): Rules {
@@ -80,7 +91,7 @@ data class Rules(
                     val x = a.optJSONObject(i) ?: continue
                     val st = toMinute(x.opt("s"))
                     val en = toMinute(x.opt("e"))
-                    if (st in 0..1439 && en in 0..1439) wins += st to en
+                    if (st in 0..1439 && en in 0..1439) wins.add(Pair(st, en))
                 }
             }
             return Rules(o.optBoolean("locked"), o.optBoolean("timed", true), o.optInt("sleepStart", 21),
