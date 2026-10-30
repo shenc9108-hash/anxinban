@@ -57,6 +57,51 @@ http.createServer(async (req, res) => {
     }
     return send(res, 404, {});
   }
+  // ---- 上传新版本 APK（必须在 body(req) 之前处理，否则请求流已被读空）----
+  if (p === '/api/parent/publish' && m === 'POST') {
+    if (req.headers['x-parent-key'] !== KEY) return send(res, 401, {});
+    const versionCode = +(req.headers['x-version-code'] || 0);
+    const versionName = req.headers['x-version-name'] || '1.0.0';
+    if (!versionCode) return send(res, 400, { error: '缺少 x-version-code' });
+
+    const dir = path.join(__dirname, 'public/apk');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, 'anxinban.apk');
+    const tmp = file + '.tmp';
+
+    try {
+      await new Promise((resolve, reject) => {
+        const ws = fs.createWriteStream(tmp);
+        req.pipe(ws);
+        ws.on('finish', resolve);
+        ws.on('close', resolve);
+        ws.on('error', reject);
+        req.on('error', reject);
+      });
+    } catch (e) {
+      return send(res, 500, { error: '接收失败: ' + e.message });
+    }
+
+    let sz = 0;
+    try { sz = fs.statSync(tmp).size; } catch (_) {}
+    if (sz < 100000) {
+      try { fs.unlinkSync(tmp); } catch (_) {}
+      return send(res, 400, { error: '文件过小（收到 ' + sz + ' 字节），不是有效 APK' });
+    }
+    fs.renameSync(tmp, file);
+
+    db.latestVersion = {
+      versionCode,
+      versionName,
+      apkUrl: '/apk/anxinban.apk',
+      size: sz,
+      notes: req.headers['x-notes'] ? decodeURIComponent(req.headers['x-notes']) : '',
+      updatedAt: Date.now(),
+    };
+    save();
+    return send(res, 200, db.latestVersion);
+  }
+
   const b = m === 'POST' ? await body(req) : {};
   // ---- 孩子端 ----
   if (p === '/api/bind') {
@@ -92,41 +137,6 @@ http.createServer(async (req, res) => {
     db.requests.push({ id: crypto.randomUUID(), deviceId: d.id, pkg: b.pkg, minutes: b.minutes || 15, ts: Date.now(), status: 'pending' });
     save(); return send(res, 200, {});
   }
-  // ---- 上传新版本 APK（家长用，需 x-parent-key）----
-  if (p === '/api/parent/publish' && m === 'POST') {
-    if (req.headers['x-parent-key'] !== KEY) return send(res, 401, {});
-    const versionCode = +(req.headers['x-version-code'] || 0);
-    const versionName = req.headers['x-version-name'] || '1.0.0';
-    if (!versionCode) return send(res, 400, { error: '缺少 x-version-code' });
-
-    const dir = path.join(__dirname, 'public/apk');
-    fs.mkdirSync(dir, { recursive: true });
-    const file = path.join(dir, 'anxinban.apk');
-    const tmp = file + '.tmp';
-
-    await new Promise((resolve, reject) => {
-      const ws = fs.createWriteStream(tmp);
-      req.pipe(ws);
-      ws.on('finish', resolve);
-      ws.on('error', reject);
-    });
-
-    const sz = fs.statSync(tmp).size;
-    if (sz < 100000) { try { fs.unlinkSync(tmp); } catch(_){} return send(res, 400, { error: '文件过小，不是有效 APK' }); }
-    fs.renameSync(tmp, file);
-
-    db.latestVersion = {
-      versionCode,
-      versionName,
-      apkUrl: '/apk/anxinban.apk',
-      size: sz,
-      notes: req.headers['x-notes'] ? decodeURIComponent(req.headers['x-notes']) : '',
-      updatedAt: Date.now(),
-    };
-    save();
-    return send(res, 200, db.latestVersion);
-  }
-
   // ---- 版本信息（孩子端检查更新用）----
   if (p === '/api/version') {
     const v = db.latestVersion || { versionCode: 1, versionName: '1.0.0', apkUrl: '', notes: '' };
