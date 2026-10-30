@@ -82,7 +82,7 @@ object Updater {
                     toast(app, "发现新版本 $remoteName，但服务器没有下载地址")
                     return@Thread
                 }
-                ui { showDialog(app, remoteName, remoteCode, apkUrl, notes) }
+                ui { showDialog(c, remoteName, remoteCode, apkUrl, notes) }
 
             } catch (e: Exception) {
                 if (!silent) {
@@ -94,7 +94,23 @@ object Updater {
         }.start()
     }
 
+    /** 找到可用的 Activity context；Application context 无法创建对话框。 */
+    private fun activityOf(c: Context): android.app.Activity? {
+        var x: Context? = c
+        while (x is android.content.ContextWrapper) {
+            if (x is android.app.Activity) return x
+            x = x.baseContext
+        }
+        return null
+    }
+
     private fun showDialog(c: Context, versionName: String, versionCode: Int, apkUrl: String, notes: String) {
+        val act = activityOf(c)
+        if (act == null || act.isFinishing || (Build.VERSION.SDK_INT >= 17 && act.isDestroyed)) {
+            // 没有前台 Activity（App 在后台）时无法弹窗，改为通知栏提示
+            toast(c, "发现新版本 $versionName，请打开 App 后再点检查更新")
+            return
+        }
         try {
             val msg = buildString {
                 append("新版本 "); append(versionName)
@@ -102,10 +118,10 @@ object Updater {
                 if (notes.isNotBlank()) { append("\n\n"); append(notes) }
                 append("\n\n更新不会丢失绑定和权限设置。")
             }
-            AlertDialog.Builder(c)
+            AlertDialog.Builder(act)
                 .setTitle("发现新版本")
                 .setMessage(msg)
-                .setPositiveButton("立即更新") { _, _ -> download(c, apkUrl, versionName) }
+                .setPositiveButton("立即更新") { _, _ -> download(act, apkUrl, versionName) }
                 .setNegativeButton("稍后", null)
                 .setCancelable(true)
                 .show()
