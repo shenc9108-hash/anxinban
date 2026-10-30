@@ -1,13 +1,14 @@
 package com.anxinban.kid
 
 import android.app.admin.DeviceAdminReceiver
+import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 
 /**
  * 设备管理器：激活后孩子无法直接卸载本应用
- * （系统会要求先到「设备管理应用」里取消激活，而孩子端可拦截该设置页）。
+ * （系统会要求先到「设备管理应用」里取消激活）。
  */
 class AdminReceiver : DeviceAdminReceiver() {
 
@@ -27,7 +28,7 @@ class AdminReceiver : DeviceAdminReceiver() {
         fun component(c: Context) = ComponentName(c, AdminReceiver::class.java)
 
         fun isActive(c: Context): Boolean {
-            val dpm = c.getSystemService(Context.DEVICE_ADMIN_SERVICE) as android.app.admin.DevicePolicyManager
+            val dpm = c.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
             return dpm.isAdminActive(component(c))
         }
     }
