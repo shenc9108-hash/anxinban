@@ -9,6 +9,7 @@ import java.util.*
 data class Rules(
     val locked: Boolean = false, val timed: Boolean = true,
     val sleepStart: Int = 21, val sleepEnd: Int = 7, val daily: Int = 60,
+    val sleepWindows: List<Pair<Int, Int>> = emptyList(),   // 多时段锁定：(开始小时, 结束小时)
     val limits: Map<String, Int> = emptyMap(),   // 包名 -> 每日限时（分钟）
     val whitelist: Set<String> = emptySet()      // 学习类白名单，始终可用
 ) {
@@ -17,11 +18,21 @@ data class Rules(
         if (pkg in whitelist) return null
         if (locked) return "家长已临时锁定手机"
         val h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-        if (timed && (h >= sleepStart || h < sleepEnd)) return "睡眠时段自动锁定"
+        if (timed && inSleepWindow(h)) return "睡眠时段自动锁定"
         val lim = limits[pkg] ?: return null
         if (Store.usedMs(c, pkg) / 60000 >= lim) return "这个应用今天的时间用完了"
         if (limits.keys.sumOf { Store.usedMs(c, it) } / 60000 >= daily) return "今日娱乐总时长已用完"
         return null
+    }
+
+    /** 命中任一锁定时段即返回 true；未配置多时段时回退到旧的单时段字段。 */
+    private fun inSleepWindow(h: Int): Boolean {
+        if (sleepWindows.isEmpty()) return h >= sleepStart || h < sleepEnd
+        return sleepWindows.any { (st, en) ->
+            if (st == en) false                      // 起止相同视为无效
+            else if (st < en) h >= st && h < en      // 同一天内，如 12->14
+            else h >= st || h < en                   // 跨夜，如 21->7
+        }
     }
 
     companion object {
@@ -31,8 +42,18 @@ data class Rules(
             o.optJSONObject("limits")?.let { j -> j.keys().forEach { k -> l[k] = j.getInt(k) } }
             val w = mutableSetOf<String>()
             o.optJSONArray("whitelist")?.let { a -> for (i in 0 until a.length()) w += a.getString(i) }
+            // 多时段：优先解析 sleepWindows；老数据没有该字段时留空，自动回退 sleepStart/sleepEnd
+            val wins = mutableListOf<Pair<Int, Int>>()
+            o.optJSONArray("sleepWindows")?.let { a ->
+                for (i in 0 until a.length()) {
+                    val x = a.optJSONObject(i) ?: continue
+                    val st = x.optInt("s", -1)
+                    val en = x.optInt("e", -1)
+                    if (st in 0..23 && en in 0..23) wins += st to en
+                }
+            }
             return Rules(o.optBoolean("locked"), o.optBoolean("timed", true), o.optInt("sleepStart", 21),
-                o.optInt("sleepEnd", 7), o.optInt("daily", 60), l, w)
+                o.optInt("sleepEnd", 7), o.optInt("daily", 60), wins, l, w)
         }
     }
 }
