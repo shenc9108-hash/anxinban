@@ -63,6 +63,74 @@ http.createServer(async (req, res) => {
     }
     return send(res, 404, {});
   }
+  // ---- CI 上传 APK（GitHub Actions 用，独立密钥）----
+  if (p === '/api/ci/upload-apk' && m === 'POST') {
+    const secret = process.env.UPLOAD_SECRET || '';
+    const given = req.headers['x-upload-secret'] || '';
+    if (!secret || given !== secret) {
+      return send(res, 401, { error: 'unauthorized' });
+    }
+
+    const vc = +(req.headers['x-version-code'] || 0);
+    const vn = req.headers['x-version-name'] || '1.0.0';
+    if (!vc) return send(res, 400, { error: 'missing versionCode' });
+
+    const dir = path.join(__dirname, 'public/apk');
+    fs.mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, 'anxinban.apk');
+    const tmp = file + '.tmp';
+
+    let total = 0;
+    try {
+      await new Promise((resolve, reject) => {
+        const ws = fs.createWriteStream(tmp);
+        req.on('data', chunk => {
+          total += chunk.length;
+          if (total > 60 * 1024 * 1024) {   // 超过 60MB 中止
+            req.destroy();
+            reject(new Error('too large'));
+          }
+        });
+        req.pipe(ws);
+        ws.on('finish', resolve);
+        ws.on('error', reject);
+        req.on('error', reject);
+      });
+    } catch (e) {
+      try { fs.unlinkSync(tmp); } catch (_) {}
+      return send(res, 400, { error: 'receive failed: ' + e.message });
+    }
+
+    // 校验：大小 + zip 头（APK 本质是 zip）
+    let sz = 0;
+    try { sz = fs.statSync(tmp).size; } catch (_) {}
+    let head = Buffer.alloc(0);
+    try {
+      const fd = fs.openSync(tmp, 'r');
+      head = Buffer.alloc(4);
+      fs.readSync(fd, head, 0, 4, 0);
+      fs.closeSync(fd);
+    } catch (_) {}
+
+    if (sz < 100000 || head[0] !== 0x50 || head[1] !== 0x4B) {
+      try { fs.unlinkSync(tmp); } catch (_) {}
+      return send(res, 400, { error: 'invalid apk', size: sz });
+    }
+
+    fs.renameSync(tmp, file);
+
+    db.latestVersion = {
+      versionCode: vc,
+      versionName: vn,
+      apkUrl: '/apk/anxinban.apk',
+      size: sz,
+      notes: req.headers['x-notes'] ? decodeURIComponent(req.headers['x-notes']) : '',
+      updatedAt: Date.now(),
+    };
+    save();
+    return send(res, 200, { ok: true, versionCode: vc, versionName: vn, size: sz });
+  }
+
   // ---- 上传新版本 APK（必须在 body(req) 之前处理，否则请求流已被读空）----
   if (p === '/api/parent/publish' && m === 'POST') {
     if (req.headers['x-parent-key'] !== KEY) return send(res, 401, {});

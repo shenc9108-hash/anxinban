@@ -23,7 +23,6 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      # 还原固定签名证书（来自 Repository secrets）
       - name: Restore keystore
         env:
           KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
@@ -68,6 +67,30 @@ jobs:
             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" '${{ github.sha }}' > version.json
           cat version.json
 
+      # 上传到自建服务器，孩子端从这里拉更新
+      - name: Publish to server
+        env:
+          UPLOAD_SECRET: ${{ secrets.UPLOAD_SECRET }}
+        run: |
+          if [ -z "$UPLOAD_SECRET" ]; then
+            echo "::warning::未配置 UPLOAD_SECRET，跳过自动发布"
+            exit 0
+          fi
+          APK=child-android/app/build/outputs/apk/release/anxinban.apk
+          echo "APK 大小: $(stat -c%s "$APK") 字节"
+          RESP=$(curl -sS --fail-with-body -X POST \
+            -H "X-Upload-Secret: $UPLOAD_SECRET" \
+            -H "X-Version-Code: ${{ steps.ver.outputs.code }}" \
+            -H "X-Version-Name: ${{ steps.ver.outputs.name }}" \
+            -H "X-Notes: 自动构建 ${{ github.sha }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary "@$APK" \
+            https://shouhu.966099.xyz/api/ci/upload-apk 2>&1) || {
+              echo "::error::上传失败: $RESP"
+              exit 1
+            }
+          echo "上传结果: $RESP"
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -86,5 +109,8 @@ jobs:
             echo "|---|---|"
             echo "| 版本 | v${{ steps.ver.outputs.name }} |"
             echo "| versionCode | ${{ steps.ver.outputs.code }} |"
-            echo "| 签名 | 固定证书 |"
+            echo ""
+            echo "已自动发布到：https://shouhu.966099.xyz/apk/anxinban.apk"
+            echo ""
+            echo "孩子端会在 6 小时内（或打开 App 时）收到更新提示。"
           } >> "$GITHUB_STEP_SUMMARY"
