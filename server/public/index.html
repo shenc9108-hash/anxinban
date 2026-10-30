@@ -120,7 +120,11 @@ const APP = {
   'com.baidu.BaiduMap':'百度地图','com.eg.android.AlipayGphone':'支付宝','com.tencent.wework':'企业微信',
   'com.dragon.read':'番茄小说','com.ss.android.ugc.live':'抖音极速版','com.baidu.searchbox':'百度',
   'com.UCMobile':'UC浏览器','com.android.chrome':'Chrome','com.huawei.browser':'华为浏览器',
-  'com.doubao.app':'豆包','com.larus.nova':'番茄免费小说','com.baidu.duer':'小度','com.iflytek.inputmethod':'讯飞输入法'
+  'com.doubao.app':'豆包','com.larus.nova':'番茄免费小说',
+  'com.gaotu100.tutu':'高途','com.xueersi.parents':'学而思','com.zuoyebang.airclass':'作业帮',
+  'com.yuanfudao.android':'猿辅导','com.baidu.homework':'作业帮家长','com.iflytek.ainote':'讯飞智能',
+  'com.duolingo':'多邻国','com.netease.edu.youdao.dict':'有道词典','com.baicizhan.bcz':'百词斩',
+  'com.jiongji.andriod.card':'扇贝单词','com.hujiang.hjclass':'沪江网校','com.tencent.edu':'腾讯课堂','com.baidu.duer':'小度','com.iflytek.inputmethod':'讯飞输入法'
 };
 const appName = p => APP[p] || p.split('.').pop();
 
@@ -478,11 +482,36 @@ function viewGuard(){
       <button class="f" onclick="addLim()">加</button></div></div>`;
 
   // 白名单
+  const wl = r.whitelist || [];
   h += `<div class="card"><h3>学习白名单</h3>
-    <div class="sub" style="margin-bottom:8px">白名单内应用不受限时和锁定影响</div>
-    <div class="row"><input id="wl" value="${esc((r.whitelist||[]).join(','))}" placeholder="包名，逗号分隔" style="flex:1"
-      onchange="setRule('whitelist',this.value.split(',').map(s=>s.trim()).filter(Boolean))">
-    </div></div>`;
+    <div class="sub" style="margin-bottom:8px">白名单内的应用不受限时和睡眠锁定影响，适合网课、背单词等学习类应用</div>`;
+
+  if(wl.length){
+    h += wl.map(pk =>
+      `<div class="kv"><span><b>${esc(appName(pk))}</b>
+        <div class="sub" style="font-size:11px">${esc(pk)}</div></span>
+        <button class="g" style="color:var(--bad)" onclick="delWL('${pk}')">移出</button>
+      </div>`).join('');
+  } else {
+    h += `<div class="sub" style="margin-bottom:8px">还没有加入白名单的应用</div>`;
+  }
+
+  const wcand = appCandidates().filter(x => wl.indexOf(x.pkg) < 0);
+  if(wcand.length){
+    h += `<div class="sub" style="margin-top:12px;margin-bottom:6px">孩子手机上的应用，点一下加入白名单：</div>`;
+    h += wcand.slice(0, 12).map(x =>
+      `<div class="kv" style="cursor:pointer" onclick="addWL('${x.pkg}')">
+        <span><b>${esc(appName(x.pkg))}</b><div class="sub" style="font-size:11px">今日 ${dur(x.ms)}</div></span>
+        <span class="chip">+ 加入</span>
+      </div>`).join('');
+  }
+
+  h += `<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">
+    <div class="sub" style="margin-bottom:6px">找不到想要的？手动填包名：</div>
+    <div class="row">
+      <input id="wl" placeholder="如 com.gaotu100.tutu" style="flex:1">
+      <button class="f" onclick="addWLManual()">加入</button></div></div>
+  </div>`;
 
   // 设备情况
   const dv = DEV.device || {};
@@ -643,6 +672,25 @@ function setWin(i, key, v){
 function setRule(k, v){
   api('rules', { method:'POST', body:{ deviceId: DEV.id, rules:{ [k]: v } } }).then(load);
 }
+/* ── 学习白名单 ── */
+function saveWL(list){
+  const uniq = [];
+  list.forEach(p => { const v = String(p || '').trim(); if(v && uniq.indexOf(v) < 0) uniq.push(v); });
+  api('rules', { method:'POST', body:{ deviceId: DEV.id, rules:{ whitelist: uniq } } }).then(load);
+}
+function addWL(pkg){ saveWL([...((DEV.rules && DEV.rules.whitelist) || []), pkg]); }
+function delWL(pkg){
+  const cur = (DEV.rules && DEV.rules.whitelist) || [];
+  saveWL(cur.filter(x => x !== pkg));
+}
+function addWLManual(){
+  const el = $('wl');
+  const v = (el && el.value || '').trim();
+  if(!v){ alert('请填写包名，例如 com.gaotu100.tutu'); return; }
+  if(!/^[a-zA-Z0-9_]+(\.[a-zA-Z0-9_]+)+$/.test(v)){ alert('包名格式不对，应类似 com.gaotu100.tutu'); return; }
+  addWL(v);
+}
+
 /* ── 应用限时：候选应用 ── */
 // 系统自身/输入法/桌面等无需限时的包名，不列为候选
 const SYS_PKG = new Set([
@@ -960,7 +1008,7 @@ setInterval(() => { if(!document.hidden && K) load(); }, 5000);
 document.addEventListener('visibilitychange', () => { if(!document.hidden && K) load(); });
 
 /* onclick/onchange 只能调用全局作用域；const/function 中部分需显式导出到 window */
-try { Object.assign(window, { newCode, dec, addFence, delFence, addWin, delWin, setWin, renameDev, addLimPkg }); } catch (e) {}
+try { Object.assign(window, { newCode, dec, addFence, delFence, addWin, delWin, setWin, renameDev, addLimPkg, addWL, delWL, addWLManual }); } catch (e) {}
 </script>
 </body>
 </html>
