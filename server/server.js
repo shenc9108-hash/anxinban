@@ -26,6 +26,23 @@ const defRules = () => ({ locked: false, timed: true, sleepStart: 21, sleepEnd: 
   if (changed) { try { save(); } catch (_) {} console.log('[迁移] 已为 ' + changed + ' 台设备补齐 sleepWindows'); }
 })();
 
+// 修复中文 header 乱码：Node 按 latin1 解码请求头，UTF-8 中文会变成 mojibake。
+// 注意：对不含 % 的乱码，decodeURIComponent 会"成功"返回原样字符串，
+// 所以必须先判断 mojibake 再决定是否转换，不能靠 try/catch 兜底。
+const decodeNotes = raw => {
+  if (!raw) return '';
+  let s = String(raw);
+  if (/%[0-9A-Fa-f]{2}/.test(s)) {
+    try { s = decodeURIComponent(s); } catch (_) {}
+  }
+  try {
+    const fixed = Buffer.from(s, 'latin1').toString('utf8');
+    // 仅当原串没有中文、而还原后是合法中文时才替换，避免二次转换
+    if (!fixed.includes('\uFFFD') && /[\u4e00-\u9fa5]/.test(fixed) && !/[\u4e00-\u9fa5]/.test(s)) return fixed;
+  } catch (_) {}
+  return s;
+};
+
 const devOf = req => { const t = (req.headers.authorization || '').slice(7); return Object.values(db.devices).find(d => d.token === t); };
 const pub = d => ({ id: d.id, model: d.model, rules: d.rules, battery: d.battery, seen: d.seen, used: d.used, loc: d.loc, fences: d.fences || [], inside: d.inside || {}, sessions: (d.sessions || []).slice(-200), adminDisabled: !!d.adminDisabled, device: d.device || null, track: (d.track || []).slice(-500), shotWanted: !!d.shotWanted, shotTs: d.shot ? d.shot.ts : 0, shotReady: !!d.shotReady });
 const dist = (a, b, c, d) => { const r = x => x * Math.PI / 180, dl = r(c - a), dg = r(d - b), h = Math.sin(dl / 2) ** 2 + Math.cos(r(a)) * Math.cos(r(c)) * Math.sin(dg / 2) ** 2; return 2 * 6371000 * Math.asin(Math.sqrt(h)); };
@@ -142,10 +159,7 @@ http.createServer(async (req, res) => {
       versionName: vn,
       apkUrl: '/apk/anxinban.apk',
       size: sz,
-      notes: (() => {
-        try { return decodeURIComponent(req.headers['x-notes'] || ''); }
-        catch (_) { return Buffer.from(req.headers['x-notes'] || '', 'latin1').toString('utf8'); }
-      })(),
+      notes: decodeNotes(req.headers['x-notes']),
       updatedAt: Date.now(),
     };
     save();
@@ -190,10 +204,7 @@ http.createServer(async (req, res) => {
       versionName,
       apkUrl: '/apk/anxinban.apk',
       size: sz,
-      notes: (() => {
-        try { return decodeURIComponent(req.headers['x-notes'] || ''); }
-        catch (_) { return Buffer.from(req.headers['x-notes'] || '', 'latin1').toString('utf8'); }
-      })(),
+      notes: decodeNotes(req.headers['x-notes']),
       updatedAt: Date.now(),
     };
     save();
