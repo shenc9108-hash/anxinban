@@ -408,7 +408,7 @@ function viewGuard(){
   const on = Date.now() - (DEV.seen||0) < 300000;
   // 多时段：优先用 sleepWindows；老数据没有该字段时，用 sleepStart/sleepEnd 自动迁移成一个时段
   const sleepList = Array.isArray(r.sleepWindows) && r.sleepWindows.length
-    ? r.sleepWindows.map(w => ({ s: +w.s, e: +w.e }))
+    ? r.sleepWindows.map(w => ({ s: w.s, e: w.e }))
     : [{ s: r.sleepStart ?? 21, e: r.sleepEnd ?? 7 }];
 
   let h = `<h2>守护</h2>`;
