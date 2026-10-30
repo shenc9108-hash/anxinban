@@ -7,7 +7,25 @@ try { db = JSON.parse(fs.readFileSync(DBF)); } catch {}
 const save = () => fs.writeFileSync(DBF, JSON.stringify(db));
 const send = (res, c, o) => { res.writeHead(c, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(o)); };
 const body = req => new Promise(r => { let s = ''; req.on('data', d => s += d); req.on('end', () => { try { r(JSON.parse(s || '{}')); } catch { r({}); } }); });
-const defRules = () => ({ locked: false, timed: true, sleepStart: 21, sleepEnd: 7, daily: 60, limits: {}, whitelist: [] });
+const defRules = () => ({ locked: false, timed: true, sleepStart: 21, sleepEnd: 7, daily: 60, limits: {}, whitelist: [],
+  // 多时段锁定：[{s:21,e:7}]。sleepStart/sleepEnd 保留为兼容字段（取第一个时段），供旧版孩子端使用。
+  sleepWindows: [{ s: 21, e: 7 }] });
+// 启动时迁移：老设备的 rules 没有 sleepWindows 时，用 sleepStart/sleepEnd 自动补一个时段。
+// 这样历史数据无需手工改动，且旧字段继续保留给旧版孩子端使用。
+(() => {
+  let changed = 0;
+  for (const d of Object.values(db.devices || {})) {
+    const r = d.rules;
+    if (!r) continue;
+    if (!Array.isArray(r.sleepWindows)) {
+      r.sleepWindows = [{ s: Number.isInteger(r.sleepStart) ? r.sleepStart : 21,
+                          e: Number.isInteger(r.sleepEnd) ? r.sleepEnd : 7 }];
+      changed++;
+    }
+  }
+  if (changed) { try { save(); } catch (_) {} console.log('[迁移] 已为 ' + changed + ' 台设备补齐 sleepWindows'); }
+})();
+
 const devOf = req => { const t = (req.headers.authorization || '').slice(7); return Object.values(db.devices).find(d => d.token === t); };
 const pub = d => ({ id: d.id, model: d.model, rules: d.rules, battery: d.battery, seen: d.seen, used: d.used, loc: d.loc, fences: d.fences || [], inside: d.inside || {}, sessions: (d.sessions || []).slice(-200), adminDisabled: !!d.adminDisabled, device: d.device || null, track: (d.track || []).slice(-500), shotWanted: !!d.shotWanted, shotTs: d.shot ? d.shot.ts : 0, shotReady: !!d.shotReady });
 const dist = (a, b, c, d) => { const r = x => x * Math.PI / 180, dl = r(c - a), dg = r(d - b), h = Math.sin(dl / 2) ** 2 + Math.cos(r(a)) * Math.cos(r(c)) * Math.sin(dg / 2) ** 2; return 2 * 6371000 * Math.asin(Math.sqrt(h)); };
@@ -271,7 +289,18 @@ http.createServer(async (req, res) => {
       if (!d.shot) return send(res, 200, { empty: true });
       return send(res, 200, { ts: d.shot.ts, img: d.shot.img, ready: !!d.shotReady });
     }
-    if (a === 'rules') { const d = db.devices[b.deviceId]; if (!d) return send(res, 404, {}); Object.assign(d.rules, b.rules); save(); return send(res, 200, d.rules); }
+    if (a === 'rules') {
+      const d = db.devices[b.deviceId]; if (!d) return send(res, 404, {});
+      Object.assign(d.rules, b.rules);
+      // 多时段与兼容字段保持一致：sleepStart/sleepEnd 始终镜像第一个时段，旧版孩子端才能继续生效
+      const wins = Array.isArray(d.rules.sleepWindows) ? d.rules.sleepWindows : [];
+      if (wins.length) {
+        const w0 = wins[0] || {};
+        if (Number.isInteger(w0.s)) d.rules.sleepStart = w0.s;
+        if (Number.isInteger(w0.e)) d.rules.sleepEnd = w0.e;
+      }
+      save(); return send(res, 200, d.rules);
+    }
     if (a === 'fence') {
       const d = db.devices[b.deviceId]; if (!d) return send(res, 404, {});
       const lat = b.lat ?? (d.loc && d.loc.lat), lng = b.lng ?? (d.loc && d.loc.lng);
