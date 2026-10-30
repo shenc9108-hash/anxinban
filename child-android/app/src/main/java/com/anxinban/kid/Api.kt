@@ -49,6 +49,8 @@ object Api {
         // 附带当天使用记录时间线
         val ses = Store.sessionJson(c)
         if (ses.length() > 0) hb.put("sessions", ses)
+        // 上报防卸载状态（设备管理器是否被取消）
+        hb.put("adminDisabled", !AdminReceiver.isActive(c))
         val ok = call("POST", "/heartbeat", hb, t)
         if (ok != null) Store.clearSessions(c)   // 上报成功才清空，避免丢数据
         call("GET", "/rules", null, t)?.let { Store.saveRules(c, it.toString()) }
