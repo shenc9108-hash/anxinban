@@ -26,7 +26,13 @@ http.createServer(async (req, res) => {
   if (!p.startsWith('/api/')) {
     // 首页
     if (p === '/' || p === '/index.html') {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      // 首页不缓存，保证改版后立即生效
+      res.writeHead(200, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      });
       return res.end(fs.readFileSync(path.join(__dirname, 'public/index.html')));
     }
     // 静态文件（防目录穿越）
