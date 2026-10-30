@@ -656,10 +656,25 @@ function openMI(k){
       ? AL.map(a => `<div class="kv"><span>${esc(a.text)}</span><span class="sub">${ago(a.ts)}</span></div>`).join('')
       : `<div class="empty">暂无消息</div>`],
     bind: ['绑定设备', `
-      <p>在孩子端输入下面的绑定码完成绑定，10 分钟内有效。</p>
+      <h4>已绑定设备</h4>
+      ${D.length
+        ? D.map(dv => `<div class="kv" style="align-items:flex-start">
+            <span><b>${esc(dv.model||'未知设备')}</b>
+              <div class="sub" style="font-size:11px">电量 ${dv.battery ?? '-'}% · ${ago(dv.seen)}</div>
+              <div class="sub" style="font-size:11px">${dv.device && dv.device.appVersionName ? 'v' + esc(dv.device.appVersionName) : '版本未知'}</div>
+            </span>
+            <button class="g" style="color:var(--bad)" onclick="unbind('${dv.id}','${esc(dv.model||'设备')}')">解除绑定</button>
+          </div>`).join('')
+        : `<div class="sub">还没有绑定设备</div>`}
+
+      <h4 style="margin-top:18px">添加新设备</h4>
+      <p class="sub">在孩子端输入下面的绑定码，10 分钟内有效。</p>
       ${code ? `<div style="font-size:34px;font-weight:700;letter-spacing:8px;text-align:center;margin:18px 0">${code}</div>` : ''}
       <button class="f" style="width:100%" onclick="newCode()">生成绑定码</button>
-      ${DEV ? `<div class="sub" style="margin-top:14px">已绑定：${esc(DEV.model)}</div>` : ''}`],
+
+      <div class="sub" style="margin-top:16px;padding-top:12px;border-top:1px solid var(--line)">
+        解除绑定后，孩子端会自动取消「防卸载」保护并清空数据，届时可以正常卸载。
+      </div>`],
     vip: ['兑换 VIP', `<div class="empty"><div style="font-size:40px">👑</div><div style="margin-top:10px">VIP 功能开发中</div><div class="sub" style="margin-top:6px">敬请期待</div></div>`],
     kf: ['联系客服', `<div class="empty"><div style="font-size:40px">💬</div><div style="margin-top:10px">客服功能开发中</div><div class="sub" style="margin-top:6px">敬请期待</div></div>`],
     about: ['关于我们', `
@@ -672,6 +687,18 @@ function openMI(k){
   const [title, body] = map[k] || ['', ''];
   sheet(`<div class="card"><h2>${title}</h2><div class="art">${body}</div></div>
     <button class="f" style="width:100%;margin-bottom:16px" onclick="closeSheet()">返回</button>`);
+}
+
+function unbind(deviceId, name){
+  if(!confirm('确定解除绑定「' + name + '」？\n\n解除后：\n· 孩子端会取消「防卸载」保护\n· 孩子端本地数据会被清空\n· 之后可以正常卸载孩子端\n\n此操作不可撤销。')) return;
+  api('unbind', { method:'POST', body:{ deviceId } })
+    .then(r => {
+      if(r && r.error){ alert(r.error); return; }
+      alert('已解除绑定。孩子端下次联网（约 30 秒内）会自动取消防卸载保护，之后即可卸载。');
+      load();
+      setTimeout(() => { closeSheet(); }, 300);
+    })
+    .catch(() => alert('操作失败，请检查网络'));
 }
 
 const newCode = () => api('code').then(r => { code = r.code; render(); });

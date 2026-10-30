@@ -153,4 +153,9 @@ object Store {
                 Math.sin(dLng / 2) * Math.sin(dLng / 2)
         return r * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
     }
+
+    /** 被解绑时清空全部本地数据。 */
+    fun clearAll(c: Context) {
+        p(c).edit().clear().apply()
+    }
 }

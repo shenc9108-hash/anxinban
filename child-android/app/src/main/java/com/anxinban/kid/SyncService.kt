@@ -35,6 +35,12 @@ class SyncService : Service() {
             startForeground(1, n, type)
         } else startForeground(1, n)
         if (hasLoc && !listening) startLocation()
+        // 被家长解绑时自我清理（取消设备管理器、清数据、停服务）
+        Api.onUnbound = {
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                UnbindHandler.handle(this)
+            }
+        }
         // 后台每隔 6 小时静默检查一次更新（有新版会在下次打开界面时提示）
         try { Updater.check(this) } catch (_: Exception) {}
         if (!run) { run = true; Thread { while (run) { Api.sync(this); Thread.sleep(30_000) } }.start() }

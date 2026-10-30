@@ -113,7 +113,13 @@ http.createServer(async (req, res) => {
     save(); return send(res, 200, { token });
   }
   if (['/api/heartbeat', '/api/rules', '/api/requests'].includes(p)) {
-    const d = devOf(req); if (!d) return send(res, 401, {});
+    const d = devOf(req);
+    if (!d) {
+      // 区分「被家长解绑」和「token 无效」，前者让孩子端自我清理
+      const tk = (req.headers.authorization || '').slice(7);
+      const wasUnbound = db.unbound && db.unbound['t:' + tk];
+      return send(res, 401, wasUnbound ? { unbound: true } : {});
+    }
     if (p === '/api/rules') return send(res, 200, d.rules);
     if (p === '/api/heartbeat') {
       Object.assign(d, { battery: b.battery, seen: Date.now(), used: b.usedMinutes || {} });
@@ -153,7 +159,17 @@ http.createServer(async (req, res) => {
     if (req.headers['x-parent-key'] !== KEY) return send(res, 401, {});
     const a = p.slice(12);
     if (a === 'code') { const c = String(Math.floor(100000 + Math.random() * 900000)); db.codes[c] = Date.now() + 600000; save(); return send(res, 200, { code: c }); }
-    if (a === 'state') return send(res, 200, { devices: Object.values(db.devices).map(pub), requests: db.requests.filter(r => r.status === 'pending'), alerts: (db.alerts || []).slice(-10).reverse() });
+    if (a === 'state') return send(res, 200, { devices: Object.values(db.devices).map(pub), requests: db.requests.filter(r => r.status === 'pending'), alerts: (db.alerts || []).slice(-10).reverse(), deviceCount: Object.keys(db.devices).length });
+    if (a === 'unbind') {
+      const d = db.devices[b.deviceId];
+      if (!d) return send(res, 404, { error: '设备不存在' });
+      db.unbound = db.unbound || {};
+      db.unbound['t:' + d.token] = Date.now();
+      delete db.devices[d.id];
+      db.requests = (db.requests || []).filter(r => r.deviceId !== d.id);
+      save();
+      return send(res, 200, { ok: true });
+    }
     if (a === 'version/set') {
       db.latestVersion = {
         versionCode: +b.versionCode || 1,

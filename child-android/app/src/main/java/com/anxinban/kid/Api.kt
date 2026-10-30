@@ -10,6 +10,9 @@ import java.net.URL
 object Api {
     @Volatile var base = "https://your-server.example.com/api"
 
+    /** 发现被家长解绑时的回调，由 Api.init 注册。 */
+    var onUnbound: (() -> Unit)? = null
+
     /** 启动时读取孩子端里保存的服务器地址，换域名或 IP 不用重新打包。 */
     fun init(c: Context) { Store.server(c)?.let { base = it } }
 
@@ -30,7 +33,19 @@ object Api {
             c.doOutput = true; c.setRequestProperty("Content-Type", "application/json")
             c.outputStream.use { it.write(body.toString().toByteArray()) }
         }
-        if (c.responseCode in 200..299) JSONObject(c.inputStream.bufferedReader().readText()) else null
+        val code = c.responseCode
+        if (code in 200..299) {
+            JSONObject(c.inputStream.bufferedReader().readText())
+        } else {
+            // 401 时读取响应体，判断是否被家长解绑
+            if (code == 401) {
+                try {
+                    val txt = c.errorStream?.bufferedReader()?.readText() ?: ""
+                    if (txt.contains("unbound")) onUnbound?.invoke()
+                } catch (_: Exception) {}
+            }
+            null
+        }
     } catch (e: Exception) { null }
 
     fun bind(code: String, model: String) =
