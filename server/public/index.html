@@ -774,7 +774,13 @@ function unbind(deviceId, name){
     .catch(() => alert('操作失败，请检查网络'));
 }
 
-const newCode = () => api('code').then(r => { code = r.code; render(); });
+// 生成绑定码：SHEET 是打开时的快照，直接 render() 只会重绘旧内容，
+// 必须重新构建弹层，否则界面看不到新码。
+const newCode = () => api('code').then(r => {
+  if(!r || !r.code){ alert('生成失败，请重试'); return; }
+  code = r.code;
+  openMI('bind');
+});
 
 /* ══════════════ 渲染 ══════════════ */
 function render(){
