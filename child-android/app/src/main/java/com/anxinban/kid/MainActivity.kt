@@ -84,8 +84,8 @@ class MainActivity : Activity() {
             }
         })
         col.addView(btn("检查更新") {
-            toast("正在检查…")
-            Updater.check(this, force = true)
+            toast("正在检查…（当前 v${packageManager.getPackageInfo(packageName, 0).versionName}）")
+            Updater.check(this, force = true, silent = false)
         })
         col.addView(btn("无服务器测试：载入演示规则") { Store.saveRules(this, demo); startGuard(); toast("微信限 1 分钟，用后会被拦截"); refresh() })
         setContentView(ScrollView(this).apply { addView(col) })

@@ -19,18 +19,21 @@ import java.net.URL
  *  1. 从服务器 /api/version 获取最新版本信息
  *  2. 版本号高于本地时弹窗提示
  *  3. 用户确认后下载 APK 并调起系统安装器
- *
- * 签名固定后为覆盖安装，DeviceAdmin / 无障碍 / 绑定数据全部保留。
  */
 object Updater {
 
     private const val PREFS = "guard"
     private const val KEY_LAST_CHECK = "update_last_check"
-    private const val CHECK_INTERVAL = 6 * 60 * 60 * 1000L   // 6 小时检查一次
+    private const val CHECK_INTERVAL = 6 * 60 * 60 * 1000L
+
+    private fun ui(r: Runnable) = Handler(Looper.getMainLooper()).post(r)
+
+    private fun toast(c: Context, m: String) = ui { Toast.makeText(c, m, Toast.LENGTH_LONG).show() }
 
     private fun localCode(c: Context): Int = try {
         c.packageManager.getPackageInfo(c.packageName, 0).let {
-            if (Build.VERSION.SDK_INT >= 28) it.longVersionCode.toInt() else @Suppress("DEPRECATION") it.versionCode
+            if (Build.VERSION.SDK_INT >= 28) it.longVersionCode.toInt()
+            else @Suppress("DEPRECATION") it.versionCode
         }
     } catch (e: Exception) { 0 }
 
@@ -38,8 +41,11 @@ object Updater {
         c.packageManager.getPackageInfo(c.packageName, 0).versionName ?: "?"
     } catch (e: Exception) { "?" }
 
-    /** 静默检查，仅在发现新版本时提示。 */
-    fun check(c: Context, force: Boolean = false) {
+    /**
+     * 检查更新。
+     * @param silent true=静默（失败不提示，仅成功弹窗）；false=用户主动点击，失败会提示原因
+     */
+    fun check(c: Context, force: Boolean = false, silent: Boolean = true) {
         val app = c.applicationContext
         val sp = app.getSharedPreferences(PREFS, 0)
         val last = sp.getLong(KEY_LAST_CHECK, 0L)
@@ -47,23 +53,44 @@ object Updater {
         sp.edit().putLong(KEY_LAST_CHECK, System.currentTimeMillis()).apply()
 
         Thread {
+            var conn: HttpURLConnection? = null
             try {
-                val conn = URL(Api.base + "/version").openConnection() as HttpURLConnection
-                conn.connectTimeout = 8000
-                conn.readTimeout = 8000
-                if (conn.responseCode !in 200..299) return@Thread
-                val o = JSONObject(conn.inputStream.bufferedReader().readText())
+                val url = Api.base + "/version"
+                conn = URL(url).openConnection() as HttpURLConnection
+                conn.connectTimeout = 10000
+                conn.readTimeout = 10000
+                conn.requestMethod = "GET"
+                val code = conn.responseCode
+                if (code !in 200..299) {
+                    if (!silent) toast(app, "检查失败：服务器返回 $code\n$url")
+                    return@Thread
+                }
+                val text = conn.inputStream.bufferedReader().readText()
+                val o = JSONObject(text)
                 val remoteCode = o.optInt("versionCode", 0)
                 val remoteName = o.optString("versionName", "?")
                 val apkUrl = o.optString("apkUrl", "")
                 val notes = o.optString("notes", "")
 
-                if (remoteCode > localCode(app) && apkUrl.isNotEmpty()) {
-                    Handler(Looper.getMainLooper()).post {
-                        showDialog(app, remoteName, remoteCode, apkUrl, notes)
-                    }
+                val mine = localCode(app)
+
+                if (remoteCode <= mine) {
+                    if (!silent) toast(app, "已是最新版本 v${localName(app)}")
+                    return@Thread
                 }
-            } catch (_: Exception) {}
+                if (apkUrl.isEmpty()) {
+                    toast(app, "发现新版本 $remoteName，但服务器没有下载地址")
+                    return@Thread
+                }
+                ui { showDialog(app, remoteName, remoteCode, apkUrl, notes) }
+
+            } catch (e: Exception) {
+                if (!silent) {
+                    toast(app, "检查失败：${e.javaClass.simpleName}: ${e.message}\n地址：${Api.base}")
+                }
+            } finally {
+                try { conn?.disconnect() } catch (_: Exception) {}
+            }
         }.start()
     }
 
@@ -82,16 +109,13 @@ object Updater {
                 .setNegativeButton("稍后", null)
                 .setCancelable(true)
                 .show()
-        } catch (_: Exception) {
-            // 后台没有 Activity 时无法弹窗，静默跳过
+        } catch (e: Exception) {
+            toast(c, "无法显示更新弹窗：${e.message}")
         }
     }
 
     private fun download(c: Context, url: String, versionName: String) {
-        val toast = { m: String ->
-            Handler(Looper.getMainLooper()).post { Toast.makeText(c, m, Toast.LENGTH_SHORT).show() }
-        }
-        toast("开始下载 $versionName …")
+        toast(c, "开始下载 $versionName …")
 
         Thread {
             try {
@@ -103,31 +127,53 @@ object Updater {
                 conn.connectTimeout = 15000
                 conn.readTimeout = 60000
                 conn.instanceFollowRedirects = true
-                if (conn.responseCode !in 200..299) { toast("下载失败：HTTP ${conn.responseCode}"); return@Thread }
+                val code = conn.responseCode
+                if (code !in 200..299) {
+                    toast(c, "下载失败：HTTP $code")
+                    return@Thread
+                }
 
+                var total = 0L
+                val expected = conn.contentLengthLong
                 conn.inputStream.use { input ->
                     out.outputStream().use { output ->
                         val buf = ByteArray(64 * 1024)
                         var n: Int
-                        while (input.read(buf).also { n = it } > 0) output.write(buf, 0, n)
+                        var lastPct = -10
+                        while (input.read(buf).also { n = it } > 0) {
+                            output.write(buf, 0, n)
+                            total += n
+                            if (expected > 0) {
+                                val pct = ((total * 100) / expected).toInt()
+                                if (pct - lastPct >= 25) {
+                                    lastPct = pct
+                                    toast(c, "下载中 $pct%")
+                                }
+                            }
+                        }
                     }
                 }
-                if (out.length() < 100_000) { toast("下载的安装包不完整"); return@Thread }
 
-                Handler(Looper.getMainLooper()).post { install(c, out) }
+                val sz = out.length()
+                if (sz < 100_000) {
+                    toast(c, "下载的安装包不完整（$sz 字节）")
+                    return@Thread
+                }
+
+                toast(c, "下载完成，准备安装…")
+                ui { install(c, out) }
             } catch (e: Exception) {
-                toast("下载失败：" + (e.message ?: "未知错误"))
+                toast(c, "下载失败：${e.javaClass.simpleName}: ${e.message}")
             }
         }.start()
     }
 
     private fun install(c: Context, apk: File) {
         try {
-            // Android 8+ 需要「未知来源安装」权限
             if (Build.VERSION.SDK_INT >= 26 && !c.packageManager.canRequestPackageInstalls()) {
                 AlertDialog.Builder(c)
                     .setTitle("需要安装权限")
-                    .setMessage("请允许「安心伴孩子端」安装应用，然后重新点更新。")
+                    .setMessage("请允许「安心伴孩子端」安装应用，然后重新点更新。\n\n路径：设置 → 应用 → 安心伴孩子端 → 安装未知应用 → 允许")
                     .setPositiveButton("去设置") { _, _ ->
                         try {
                             c.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
@@ -147,7 +193,7 @@ object Updater {
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (e: Exception) {
-            Toast.makeText(c, "无法启动安装：${e.message}", Toast.LENGTH_LONG).show()
+            toast(c, "无法启动安装：${e.javaClass.simpleName}: ${e.message}")
         }
     }
 }
