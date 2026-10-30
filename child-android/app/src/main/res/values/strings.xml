@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">安心伴孩子端</string>
+    <string name="a11y_desc">用于识别当前打开的应用，按家长设置的时长和时段进行限制。</string>
+</resources>
