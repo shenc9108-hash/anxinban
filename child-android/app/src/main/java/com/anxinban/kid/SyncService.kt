@@ -85,7 +85,9 @@ class SyncService : Service() {
                 wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "anxinban:sync")
                 wakeLock?.setReferenceCounted(false)
             }
-            if (wakeLock?.isHeld != true) wakeLock?.acquire()
+            // 必须带超时：无超时的 wakelock 在 onDestroy 未执行时会永远挂着，
+            // 系统判定异常耗电会直接强杀应用。心跳每 30 秒续期一次。
+            if (wakeLock?.isHeld != true) wakeLock?.acquire(10 * 60_000L)
         } catch (_: Throwable) {}
     }
 
@@ -140,9 +142,19 @@ class SyncService : Service() {
 
 const val ACTION_ALARM = "com.anxinban.kid.ALARM_WAKE"
 
+/**
+ * 开机、以及「应用被覆盖安装完成」时重启守护服务。
+ *
+ * ACTION_MY_PACKAGE_REPLACED 很关键：升级 APK 后系统会杀掉本应用的所有进程和服务，
+ * 若没人监听该广播，服务就再也不会自己起来，只能等用户手动打开 App——
+ * 表现就是「升级完就离线」。
+ */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(c: Context, i: Intent) {
-        if (Store.token(c) != null) c.startForegroundService(Intent(c, SyncService::class.java))
+        if (Store.token(c) == null) return
+        try {
+            c.startForegroundService(Intent(c, SyncService::class.java))
+        } catch (_: Throwable) {}
     }
 }
 
