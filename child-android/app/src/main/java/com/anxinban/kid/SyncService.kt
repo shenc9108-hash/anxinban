@@ -44,21 +44,11 @@ class SyncService : Service() {
         if (Build.VERSION.SDK_INT >= 29) {
             var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC
             if (hasLoc) type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
-            startForeground(1, n, type)
-        } else startForeground(1, n)
+            try { startForeground(1, n, type) } catch (_: Throwable) { startForeground(1, n) }
+        } else try { startForeground(1, n) } catch (_: Throwable) {}
 
-        acquireWakeLock()
-        scheduleAlarm()                       // 兜底：即使被杀也会被唤醒重启
-
-        if (hasLoc && !listening) startLocation()
-        // 被家长解绑时自我清理（取消设备管理器、清数据、停服务）
-        Api.onUnbound = {
-            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                UnbindHandler.handle(this)
-            }
-        }
-        // 后台每隔 6 小时静默检查一次更新（有新版会在下次打开界面时提示）
-        try { Updater.check(this) } catch (_: Exception) {}
+        // 先启动心跳线程：这是最关键的功能，必须最先保证跑起来。
+        // 后面的唤醒锁/闹钟/定位即使失败，也不能影响上报。
         if (!run) {
             run = true
             Thread {
@@ -74,6 +64,20 @@ class SyncService : Service() {
                 }
             }.start()
         }
+        // 以下是保活与附加功能，任何一步失败都不应让服务崩溃
+        try { acquireWakeLock() } catch (_: Throwable) {}
+        try { scheduleAlarm() } catch (_: Throwable) {}
+        try { if (hasLoc && !listening) startLocation() } catch (_: Throwable) {}
+        // 被家长解绑时自我清理（取消设备管理器、清数据、停服务）
+        try {
+            Api.onUnbound = {
+                android.os.Handler(android.os.Looper.getMainLooper()).post {
+                    UnbindHandler.handle(this)
+                }
+            }
+        } catch (_: Throwable) {}
+        // 后台静默检查一次更新（有新版会在下次打开界面时提示）
+        try { Updater.check(this) } catch (_: Throwable) {}
         return START_STICKY
     }
 
