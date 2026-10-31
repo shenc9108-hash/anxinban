@@ -437,9 +437,11 @@ function viewGuard(){
     ${r.timed ? `<div style="padding:10px 0">
       <div class="sub" style="margin-bottom:8px">锁定时段：可添加多个，任一命中即锁定。可精确到分钟，例如 22:32 → 07:15。</div>
       ${sleepList.map((w,i) => `<div class="st" style="margin-bottom:8px">
-        <input type="time" value="${fmtWin(w.s)}" style="flex:1" onchange="setWin(${i},'s',this.value)">
+        <input type="time" data-edit="1" value="${fmtWin(w.s)}" style="flex:1"
+               onfocus="editing=true" onblur="editing=false;setWin(${i},'s',this.value)">
         <span>—</span>
-        <input type="time" value="${fmtWin(w.e)}" style="flex:1" onchange="setWin(${i},'e',this.value)">
+        <input type="time" data-edit="1" value="${fmtWin(w.e)}" style="flex:1"
+               onfocus="editing=true" onblur="editing=false;setWin(${i},'e',this.value)">
         <button class="g" style="color:var(--bad);margin-left:6px" onclick="delWin(${i})">删除</button>
       </div>`).join('')}
       ${sleepList.length ? '' : `<div class="sub" style="margin-bottom:8px">还没有时段，点下面添加</div>`}
@@ -728,7 +730,11 @@ function delWin(i){
 function setWin(i, key, v){
   const list = curWins();
   if(!list[i]) return;
-  if(!/^\d{1,2}:\d{2}/.test(String(v || ''))){ alert('时间格式应为 HH:mm，例如 22:32'); load(); return; }
+  // 空值说明用户清空了输入框，直接忽略，不要弹窗打扰
+  if(v == null || String(v).trim() === '') return;
+  if(!/^\d{1,2}:\d{2}/.test(String(v))){ alert('时间格式应为 HH:mm，例如 22:32'); return; }
+  // 值没变就不保存，避免无谓重绘
+  if(fmtWin(list[i][key]) === fmtWin(v)) return;
   list[i][key] = fmtWin(v);
   saveWins(list);
 }
@@ -1066,10 +1072,18 @@ async function load(){
   }
 }
 
+/**
+ * 是否正在编辑时间输入框。
+ * 以前每 5 秒无条件重新渲染，用户填时段填到一半就被刷回旧值，
+ * 表现为「时间框乱跳、还没填完就闪」。
+ */
+var editing = false;
+
 load();
 // 页面隐藏时暂停轮询（省电），回到前台立即刷新
-setInterval(() => { if(!document.hidden && K) load(); }, 5000);
-document.addEventListener('visibilitychange', () => { if(!document.hidden && K) load(); });
+// 正在编辑时也跳过，避免覆盖用户正在输入的内容
+setInterval(() => { if(!document.hidden && K && !editing) load(); }, 5000);
+document.addEventListener('visibilitychange', () => { if(!document.hidden && K && !editing) load(); });
 
 /* onclick/onchange 只能调用全局作用域；const/function 中部分需显式导出到 window */
 try { Object.assign(window, { newCode, dec, addFence, delFence, addWin, delWin, setWin, renameDev, addLimPkg, addWL, delWL, addWLManual }); } catch (e) {}
