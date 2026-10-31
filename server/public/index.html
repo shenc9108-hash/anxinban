@@ -663,7 +663,51 @@ function curWins(){
     : [{ s: fmtWin(r.sleepStart ?? 21), e: fmtWin(r.sleepEnd ?? 7) }];
 }
 function saveWins(list){
+  // 防误锁校验：曾经因为时段首尾相接把设备锁了 20 小时，
+  // 连系统设置都进不去，最后只能进 Recovery 清数据。
+  const warn = checkWins(list);
+  if (warn && !confirm(warn)) return;
   api('rules', { method:'POST', body:{ deviceId: DEV.id, rules:{ sleepWindows: list } } }).then(load);
+}
+
+// 把时段换算成「一天中被锁住的总分钟数」
+function lockedMinutes(list){
+  const seg = [];
+  for(const w of list){
+    let st = toMin(w.s), en = toMin(w.e);
+    if(st === en) continue;
+    if(st < en) seg.push([st, en]);
+    else { seg.push([st, 1440]); seg.push([0, en]); }
+  }
+  // 合并区间
+  seg.sort((a,b)=>a[0]-b[0]);
+  let total = 0, cs = -1, ce = -1;
+  for(const [a,b] of seg){
+    if(cs < 0){ cs = a; ce = b; }
+    else if(a <= ce){ ce = Math.max(ce, b); }
+    else { total += ce - cs; cs = a; ce = b; }
+  }
+  if(cs >= 0) total += ce - cs;
+  return total;
+}
+
+// 返回警告文案；没问题返回 null
+function checkWins(list){
+  if(!Array.isArray(list) || !list.length) return null;
+  const mins = lockedMinutes(list);
+  const hrs = (mins/60).toFixed(1);
+  if(mins >= 20 * 60){
+    return '⚠️ 这套时段每天锁定 ' + hrs + ' 小时，孩子几乎全天无法使用手机，\n连系统设置都会被锁，出问题只能进 Recovery 清数据。\n\n确定要保存吗？';
+  }
+  if(mins >= 16 * 60){
+    return '⚠️ 这套时段每天锁定 ' + hrs + ' 小时，超过 16 小时。\n请确认是否真的需要这么严格。\n\n确定要保存吗？';
+  }
+  for(const w of list){
+    if(toMin(w.s) === toMin(w.e)){
+      return '⚠️ 有开始和结束时间相同的时段（等于没设），请检查。\n\n仍要保存吗？';
+    }
+  }
+  return null;
 }
 function addWin(){
   const list = curWins();

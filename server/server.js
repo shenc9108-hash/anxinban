@@ -229,7 +229,17 @@ http.createServer(async (req, res) => {
       const wasUnbound = db.unbound && db.unbound['t:' + tk];
       return send(res, 401, wasUnbound ? { unbound: true } : {});
     }
-    if (p === '/api/rules') return send(res, 200, d.rules);
+    if (p === '/api/rules') {
+      // 顺手清掉已过期的放行记录，别让它无限增长
+      const al = d.rules && d.rules.allowances;
+      if (al) {
+        const now = Date.now();
+        let dirty = false;
+        for (const k of Object.keys(al)) if (!(al[k] > now)) { delete al[k]; dirty = true; }
+        if (dirty) save();
+      }
+      return send(res, 200, d.rules);
+    }
     if (p === '/api/heartbeat') {
       Object.assign(d, { battery: b.battery, seen: Date.now(), used: b.usedMinutes || {} });
       if (typeof b.lat === 'number') { d.loc = { lat: b.lat, lng: b.lng, acc: b.acc, ts: Date.now() }; checkFences(d); }
@@ -334,7 +344,21 @@ http.createServer(async (req, res) => {
     if (a === 'requests') {
       const r = db.requests.find(x => x.id === b.id); if (!r) return send(res, 404, {});
       r.status = b.approve ? 'approved' : 'denied';
-      if (b.approve) { const d = db.devices[r.deviceId]; d.rules.limits[r.pkg] = (d.rules.limits[r.pkg] || 0) + r.minutes; d.rules.daily += r.minutes; }
+      if (b.approve) {
+        const d = db.devices[r.deviceId];
+        if (d) {
+          // 真正让孩子端放行：写入截止时间戳。
+          // 原来只加 limits/daily，但睡眠时段判断排在 limits 之前，
+          // 所以锁定时段内批准也不会生效。
+          d.rules.allowances = d.rules.allowances || {};
+          const until = Date.now() + (r.minutes || 15) * 60000;
+          d.rules.allowances[r.pkg] = until;
+          // 保留原有的限时累加语义
+          d.rules.limits = d.rules.limits || {};
+          d.rules.limits[r.pkg] = (d.rules.limits[r.pkg] || 0) + (r.minutes || 15);
+          d.rules.daily = (d.rules.daily || 0) + (r.minutes || 15);
+        }
+      }
       save(); return send(res, 200, {});
     }
   }

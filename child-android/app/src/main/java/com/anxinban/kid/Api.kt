@@ -66,7 +66,7 @@ object Api {
         val ses = Store.sessionJson(c)
         if (ses.length() > 0) {
             val part = org.json.JSONArray()
-            val n = minOf(ses.length(), 100)
+            val n = minOf(ses.length(), 40)
             for (i in 0 until n) part.put(ses.opt(i))
             hb.put("sessions", part)
         }
@@ -78,18 +78,21 @@ object Api {
         val trk = Store.trackJson(c)
         if (trk.length() > 0) {
             val part = org.json.JSONArray()
-            val n = minOf(trk.length(), 100)
+            val n = minOf(trk.length(), 40)
             for (i in 0 until n) part.put(trk.opt(i))
             hb.put("track", part)
         }
-        val ok = call("POST", "/heartbeat", hb, t)
+        // 心跳失败不能影响拉规则：之前两者串在一条链上，
+        // 心跳因包体过大超时后，新规则就永远下发不下去。
+        var ok: JSONObject? = null
+        try { ok = call("POST", "/heartbeat", hb, t) } catch (_: Throwable) {}
         if (ok != null) {                         // 上报成功才清空，避免丢数据
             Store.clearSessions(c)
             Store.clearTrack(c)
         }
 
         // 家长请求截屏：已授权则截一张上传
-        if (ok?.optBoolean("wantShot") == true && ScreenCapture.isReady()) {
+        if (ok != null && ok.optBoolean("wantShot") && ScreenCapture.isReady()) {
             val img = ScreenCapture.capture(c)
             if (img != null) {
                 call("POST", "/heartbeat", JSONObject()
@@ -100,7 +103,8 @@ object Api {
             }
         }
 
-        call("GET", "/rules", null, t)?.let { Store.saveRules(c, it.toString()) }
+        // 拉规则单独 try：这是远程修复的唯一通道，绝不能被上面的心跳拖垮
+        try { call("GET", "/rules", null, t)?.let { Store.saveRules(c, it.toString()) } } catch (_: Throwable) {}
     }
 
     fun askMore(c: Context, pkg: String) {

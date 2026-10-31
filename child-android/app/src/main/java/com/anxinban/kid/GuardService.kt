@@ -14,6 +14,7 @@ import android.view.accessibility.AccessibilityEvent
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 
 /** 核心：识别前台应用 -> 累计用时 -> 按规则拦截。 */
 class GuardService : AccessibilityService() {
@@ -83,9 +84,31 @@ class GuardService : AccessibilityService() {
                 setOnClickListener { Thread { Api.askMore(this@GuardService, pkg) }.start(); text = "已发送给家长"; isEnabled = false }
             })
         }
+        // 关键修正：原实现是全屏 OPAQUE 且只盖在最上层，会连电源菜单一起挡住，
+        // 用户拉不下通知栏、按不出关机，误锁后只能进 Recovery 清数据。
+        // 现在：让出顶部状态栏高度 + 半透明，通知栏始终可下拉；长按可强制关闭。
         val lp = WindowManager.LayoutParams(-1, -1, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN, PixelFormat.OPAQUE)
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT)
+        // 从状态栏下沿开始铺，留出下拉通知栏的空间
+        lp.gravity = Gravity.TOP or Gravity.START
+        lp.y = statusBarHeight()
         wm.addView(box, lp); overlay = box
+
+        // 长按遮罩 3 秒强制关闭遮罩：给用户留一条自救的路
+        box.setOnLongClickListener {
+            close()
+            try { Toast.makeText(this, "已临时关闭拦截，请尽快处理", Toast.LENGTH_SHORT).show() } catch (_: Throwable) {}
+            true
+        }
+    }
+
+    /** 取状态栏高度，让遮罩从状态栏下沿开始，保证通知栏可下拉。 */
+    private fun statusBarHeight(): Int {
+        return try {
+            val id = resources.getIdentifier("status_bar_height", "dimen", "android")
+            if (id > 0) resources.getDimensionPixelSize(id) else 0
+        } catch (_: Throwable) { 0 }
     }
 
     override fun onInterrupt() {}

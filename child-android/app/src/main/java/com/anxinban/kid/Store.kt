@@ -12,10 +12,20 @@ data class Rules(
     // 多时段锁定：起止均为「当日第几分钟」(0..1439)，精确到分。
     val sleepWindows: List<Pair<Int, Int>> = emptyList(),
     val limits: Map<String, Int> = emptyMap(),   // 包名 -> 每日限时（分钟）
-    val whitelist: Set<String> = emptySet()      // 学习类白名单，始终可用
+    val whitelist: Set<String> = emptySet(),     // 学习类白名单，始终可用
+    // 家长批准「申请再用」后的放行截止时间：包名 -> 时间戳(ms)。
+    // 之前孩子端只发申请、从不读取批准结果，导致批准了也不生效。
+    val allowances: Map<String, Long> = emptyMap()
 ) {
     /** 返回拦截原因；返回 null 表示允许使用。 */
     fun blockReason(c: Context, pkg: String): String? {
+        // 系统关键组件永远放行：否则家长一设错就进不去设置、输不了字、装不了新版，
+        // 连远程修复的机会都没有（曾经真的把用户锁死过，只能进 Recovery 清数据）。
+        if (isAlwaysAllowed(pkg)) return null
+        // 家长已批准的「申请再用」：在截止时间前直接放行，
+        // 必须排在任何锁定判断之前，否则睡眠时段会把限时豁免盖掉。
+        val until = allowances[pkg] ?: 0L
+        if (until > System.currentTimeMillis()) return null
         if (pkg in whitelist) return null
         if (locked) return "家长已临时锁定手机"
         val cal = Calendar.getInstance()
@@ -47,6 +57,44 @@ data class Rules(
     }
 
     companion object {
+        /**
+         * 无论规则怎么配，这些包永不拦截。
+         * 必须写死：它们是用户自救的唯一通道。
+         */
+        private val ALWAYS_ALLOW_PREFIX = listOf(
+            "com.android.settings",
+            "com.android.systemui",
+            "com.android.packageinstaller",
+            "com.android.permissioncontroller",
+            "com.android.documentsui",
+            "com.android.filemanager",
+            "com.android.providers",
+            "com.android.inputmethod",
+            "com.android.server",
+            "com.vivo.settings",
+            "com.vivo.packageinstaller",
+            "com.vivo.launcher",
+            "com.bbk.launcher",
+            "com.bbk.appstore",
+            "com.iqoo",
+            "com.sohu.inputmethod",
+            "com.baidu.input",
+            "com.iflytek.inputmethod",
+            "com.google.android.packageinstaller",
+            "com.google.android.permissioncontroller",
+            // 桌面类：各厂商启动器包名各不相同，用关键字兜底
+            "com.sec.android.app.launcher",
+        )
+
+        /** 系统设置/输入法/安装器/桌面等关键组件：永不拦截。 */
+        fun isAlwaysAllowed(pkg: String): Boolean {
+            if (pkg.isEmpty()) return true
+            for (p in ALWAYS_ALLOW_PREFIX) if (pkg.startsWith(p)) return true
+            // 兜底：包名里带 launcher / inputmethod 的视为关键组件
+            val low = pkg.lowercase()
+            return low.endsWith(".launcher") || low.contains("launcher") || low.contains("inputmethod")
+        }
+
         /**
          * 把家长端下发的值解析成「当日第几分钟」。
          * 支持 "22:32" 字符串、整数 1352、以及旧的整数小时 22。
@@ -94,8 +142,13 @@ data class Rules(
                     if (st in 0..1439 && en in 0..1439) wins.add(Pair(st, en))
                 }
             }
+            // 家长批准的放行时间
+            val alw = mutableMapOf<String, Long>()
+            o.optJSONObject("allowances")?.let { j ->
+                for (k in j.keys()) alw[k] = j.optLong(k, 0L)
+            }
             return Rules(o.optBoolean("locked"), o.optBoolean("timed", true), o.optInt("sleepStart", 21),
-                o.optInt("sleepEnd", 7), o.optInt("daily", 60), wins, l, w)
+                o.optInt("sleepEnd", 7), o.optInt("daily", 60), wins, l, w, alw)
         }
     }
 }
