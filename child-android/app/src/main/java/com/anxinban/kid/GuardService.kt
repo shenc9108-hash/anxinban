@@ -18,6 +18,11 @@ import android.widget.Toast
 
 /** 核心：识别前台应用 -> 累计用时 -> 按规则拦截。 */
 class GuardService : AccessibilityService() {
+    companion object {
+        /** 无障碍服务是否在运行：自检面板要显示 */
+        @Volatile var running = false
+    }
+
     private val h = Handler(Looper.getMainLooper())
     private var cur: String? = null
     private var last = 0L
@@ -36,7 +41,12 @@ class GuardService : AccessibilityService() {
         override fun run() { account(); cur?.let { check(it) }; h.postDelayed(this, 30_000) }
     }
 
-    override fun onServiceConnected() { Api.init(this); last = SystemClock.elapsedRealtime(); h.post(tick) }
+    override fun onServiceConnected() {
+        running = true
+        Api.init(this); last = SystemClock.elapsedRealtime(); h.post(tick)
+    }
+
+    override fun onDestroy() { running = false; super.onDestroy() }
 
     override fun onAccessibilityEvent(e: AccessibilityEvent) {
         if (e.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return

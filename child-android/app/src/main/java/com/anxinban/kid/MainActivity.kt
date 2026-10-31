@@ -95,6 +95,33 @@ class MainActivity : Activity() {
             Updater.check(this, force = true, silent = false)
         })
         col.addView(btn("无服务器测试：载入演示规则") { Store.saveRules(this, demo); startGuard(); toast("微信限 1 分钟，用后会被拦截"); refresh() })
+
+        // ---- 自检面板 ----
+        col.addView(TextView(this).apply {
+            text = "—— 自检 ——"; textSize = 18f; setPadding(0, 32, 0, 12)
+        })
+        val diagText = TextView(this).apply {
+            textSize = 13f
+            setPadding(0, 8, 0, 8)
+            setTextIsSelectable(true)
+        }
+        fun updateDiag() {
+            diagText.text = Diag.report(this) + "\n\n" + Diag.serviceState(this)
+        }
+        updateDiag()
+        col.addView(diagText)
+        col.addView(btn("立即上报一次（测试连接）") {
+            Thread {
+                try { Api.sync(this) } catch (_: Throwable) {}
+                runOnUiThread { updateDiag(); toast("已尝试上报，看上面的结果") }
+            }.start()
+        })
+        col.addView(btn("服务状态 / 电池优化设置") {
+            try {
+                startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                    .setData(android.net.Uri.parse("package:$packageName")))
+            } catch (_: Throwable) {}
+        })
         setContentView(ScrollView(this).apply { addView(col) })
     }
 

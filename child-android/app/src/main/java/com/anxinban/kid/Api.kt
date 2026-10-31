@@ -85,7 +85,13 @@ object Api {
         // 心跳失败不能影响拉规则：之前两者串在一条链上，
         // 心跳因包体过大超时后，新规则就永远下发不下去。
         var ok: JSONObject? = null
-        try { ok = call("POST", "/heartbeat", hb, t) } catch (_: Throwable) {}
+        try {
+            ok = call("POST", "/heartbeat", hb, t)
+            Diag.record(c, "heartbeat", ok != null,
+                if (ok != null) "" else "网络请求未返回 200（超时或被拒绝）")
+        } catch (e: Throwable) {
+            Diag.record(c, "heartbeat", false, e.javaClass.simpleName + ": " + (e.message ?: ""))
+        }
         if (ok != null) {                         // 上报成功才清空，避免丢数据
             Store.clearSessions(c)
             Store.clearTrack(c)
@@ -104,7 +110,13 @@ object Api {
         }
 
         // 拉规则单独 try：这是远程修复的唯一通道，绝不能被上面的心跳拖垮
-        try { call("GET", "/rules", null, t)?.let { Store.saveRules(c, it.toString()) } } catch (_: Throwable) {}
+        try {
+            val r = call("GET", "/rules", null, t)
+            if (r != null) { Store.saveRules(c, r.toString()); Diag.record(c, "rules", true, "") }
+            else Diag.record(c, "rules", false, "规则拉取未返回 200")
+        } catch (e: Throwable) {
+            Diag.record(c, "rules", false, e.javaClass.simpleName + ": " + (e.message ?: ""))
+        }
     }
 
     fun askMore(c: Context, pkg: String) {
