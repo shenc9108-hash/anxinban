@@ -27,7 +27,7 @@ object Api {
 
     private fun call(method: String, path: String, body: JSONObject?, token: String?): JSONObject? = try {
         val c = URL(base + path).openConnection() as HttpURLConnection
-        c.requestMethod = method; c.connectTimeout = 8000; c.readTimeout = 8000
+        c.requestMethod = method; c.connectTimeout = 20_000; c.readTimeout = 20_000
         token?.let { c.setRequestProperty("Authorization", "Bearer $it") }
         if (body != null) {
             c.doOutput = true; c.setRequestProperty("Content-Type", "application/json")
@@ -61,16 +61,27 @@ object Api {
             .put("battery", bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY))
             .put("usedMinutes", used).put("ts", System.currentTimeMillis())
         Store.loc(c)?.let { hb.put("lat", it.first).put("lng", it.second).put("acc", it.third.toDouble()) }
-        // 附带当天使用记录时间线
+        // 附带当天使用记录时间线（分批：一次最多 100 条，
+        // 原来把 500 条全塞进心跳，包体可达 50KB，弱网下 8 秒超时会导致心跳整个失败）
         val ses = Store.sessionJson(c)
-        if (ses.length() > 0) hb.put("sessions", ses)
+        if (ses.length() > 0) {
+            val part = org.json.JSONArray()
+            val n = minOf(ses.length(), 100)
+            for (i in 0 until n) part.put(ses.opt(i))
+            hb.put("sessions", part)
+        }
         // 上报防卸载状态（设备管理器是否被取消）
         hb.put("adminDisabled", !AdminReceiver.isActive(c))
         // 设备基础信息（型号/系统/存储/内存）
         try { hb.put("device", DeviceInfo.collect(c)) } catch (_: Exception) {}
-        // 位置轨迹
+        // 位置轨迹（同样分批，一次最多 100 个点）
         val trk = Store.trackJson(c)
-        if (trk.length() > 0) hb.put("track", trk)
+        if (trk.length() > 0) {
+            val part = org.json.JSONArray()
+            val n = minOf(trk.length(), 100)
+            for (i in 0 until n) part.put(trk.opt(i))
+            hb.put("track", part)
+        }
         val ok = call("POST", "/heartbeat", hb, t)
         if (ok != null) {                         // 上报成功才清空，避免丢数据
             Store.clearSessions(c)
