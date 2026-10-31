@@ -111,6 +111,13 @@ class SyncService : Service() {
                         // 曾经固定 30 秒死磕，代理切换后网络栈一直是坏的，
                         // 加退避能减少无谓重试，同时配合网络回调立刻恢复。
                         backoff = (backoff + 1).coerceAtMost(3)
+                        // 连续失败两次以上，说明不是偶发波动：
+                        // 主动清掉 DNS 缓存，否则会一直往已经失效的地址发请求，
+                        // 表现就是「网络早恢复了，App 却永远连不上，
+                        // 非得手动点一次上报才活」。这是那段现象的最后兜底。
+                        if (backoff >= 2) {
+                            try { Api.resetNetworkState() } catch (_: Throwable) {}
+                        }
                         val delay = 30_000L * (1L shl (backoff - 1))
                         synchronized(lock) { try { lock.wait(delay) } catch (_: InterruptedException) {} }
                     }
@@ -226,6 +233,9 @@ class BootReceiver : BroadcastReceiver() {
         try {
             c.startForegroundService(Intent(c, SyncService::class.java))
         } catch (_: Throwable) {}
+        // 重启后所有闹钟都会被清空，必须重新排一次，
+        // 否则这台设备在下次开机前只能靠服务自身存活，一被清理就永久离线。
+        SyncService.alarm(c)
     }
 }
 

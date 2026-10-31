@@ -8,6 +8,40 @@ import java.net.URL
 
 /** 与你自己的后端通信。接口约定见 README。务必在后台线程调用。 */
 object Api {
+    /**
+     * 强制清空 JVM 的 DNS 缓存。
+     *
+     * 这是「关掉代理后仍然离线、必须手动点上报」的最后一层兜底。
+     * 代理/VPN 切换时，路由器和系统给域名解析出的地址会变，
+     * 但 JVM 会把旧结果缓存住（成功几分钟、失败甚至更久），
+     * 于是后台一直往已经不通的地址发请求，重试多少次都没用。
+     * 手动点「立即上报」之所以能好，是因为那次请求恰好走了新的解析路径。
+     */
+    fun resetNetworkState() {
+        try {
+            val cl = Class.forName("java.net.InetAddress")
+            // 清 fqdn 缓存表（不同 JDK 字段名不同，逐一尝试）
+            for (name in listOf("addressCache", "cachedLookup", "lookupTable")) {
+                try {
+                    val fld = cl.getDeclaredField(name)
+                    fld.isAccessible = true
+                    val cache = fld.get(null)
+                    if (cache != null) {
+                        val clr = cache.javaClass.getDeclaredMethod("clear")
+                        clr.isAccessible = true
+                        clr.invoke(cache)
+                    }
+                } catch (_: Throwable) {}
+            }
+        } catch (_: Throwable) {}
+        try {
+            // 允许重新解析，配合 call() 里的 no-cache
+            java.security.Security.setProperty("networkaddress.cache.ttl", "0")
+            java.security.Security.setProperty("networkaddress.cache.negative.ttl", "0")
+        } catch (_: Throwable) {}
+    }
+
+
     @Volatile var base = "https://your-server.example.com/api"
 
     /** 发现被家长解绑时的回调，由 Api.init 注册。 */
