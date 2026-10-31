@@ -110,9 +110,10 @@ class MainActivity : Activity() {
         }
         updateDiag()
         col.addView(diagText)
+        val self = this
         col.addView(btn("立即上报一次（测试连接）") {
             Thread {
-                try { Api.sync(this) } catch (_: Throwable) {}
+                try { Api.sync(self) } catch (_: Throwable) {}
                 runOnUiThread { updateDiag(); toast("已尝试上报，看上面的结果") }
             }.start()
         })
