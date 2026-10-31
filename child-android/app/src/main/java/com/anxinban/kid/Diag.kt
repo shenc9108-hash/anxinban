@@ -75,7 +75,7 @@ object Diag {
             sb.append('\n')
         }
         sb.append("无障碍：")
-        sb.append(if (GuardService.isRunning) "运行中" else "未运行（拦截不会生效）")
+        sb.append(if (GuardService.running) "运行中" else "未运行（拦截不会生效）")
         return sb.toString()
     }
 }
