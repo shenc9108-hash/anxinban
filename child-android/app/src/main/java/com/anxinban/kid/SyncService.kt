@@ -6,6 +6,7 @@ import android.content.*
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.location.*
+import android.net.ConnectivityManager
 import android.os.*
 
 /**
