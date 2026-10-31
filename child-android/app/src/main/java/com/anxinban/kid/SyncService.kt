@@ -21,6 +21,44 @@ class SyncService : Service() {
     private var listening = false
     private var wakeLock: PowerManager.WakeLock? = null
 
+    // 心跳线程的等待锁：网络恢复时用它把线程立刻叫醒，不用干等到下一次 30 秒
+    private val lock = Object()
+    private var netCallback: ConnectivityManager.NetworkCallback? = null
+
+    /**
+     * 监听网络变化。代理开关、WiFi 与移动数据互切时立刻触发一次上报。
+     * 这是「离线后必须手动点上报才能恢复」的关键修复之一：
+     * 以前网络恢复了 App 完全不知道，只能等下一个 30 秒周期，
+     * 而那个周期往往又在用失效的连接。
+     */
+    private fun registerNetWatch() {
+        if (netCallback != null) return
+        try {
+            val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+            val cb = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) { wakeUp() }
+                override fun onLost(network: android.net.Network) { wakeUp() }
+            }
+            cm.registerDefaultNetworkCallback(cb)
+            netCallback = cb
+        } catch (_: Throwable) {
+            // 没有权限或系统太旧就放弃，不影响主流程
+        }
+    }
+
+    private fun unregisterNetWatch() {
+        try {
+            val cm = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+            netCallback?.let { cm.unregisterNetworkCallback(it) }
+        } catch (_: Throwable) {}
+        netCallback = null
+    }
+
+    /** 唤醒心跳线程，立即重试一次。 */
+    private fun wakeUp() {
+        try { synchronized(lock) { lock.notifyAll() } } catch (_: Throwable) {}
+    }
+
     private val listener = object : LocationListener {
         override fun onLocationChanged(l: Location) {
             Store.saveLoc(this@SyncService, l.latitude, l.longitude, l.accuracy)
@@ -51,16 +89,30 @@ class SyncService : Service() {
         // 后面的唤醒锁/闹钟/定位即使失败，也不能影响上报。
         if (!run) {
             run = true
+            registerNetWatch()
             Thread {
+                var backoff = 0          // 连续失败次数，用于退避
                 while (run) {
+                    var ok = false
                     try {
                         // 每次循环确保 wakelock 仍在，防止被系统释放
                         if (wakeLock?.isHeld != true) acquireWakeLock()
-                        Api.sync(this)
+                        ok = Api.sync(this)
                     } catch (_: Throwable) {
                         // 单次失败不能让线程退出
                     }
-                    try { Thread.sleep(30_000) } catch (_: InterruptedException) { }
+                    if (ok) {
+                        backoff = 0
+                        // 成功：正常 30 秒一轮，但可以被网络变化提前唤醒
+                        synchronized(lock) { try { lock.wait(30_000L) } catch (_: InterruptedException) {} }
+                    } else {
+                        // 失败：指数退避 30s -> 60s -> 120s，最多 3 分钟。
+                        // 曾经固定 30 秒死磕，代理切换后网络栈一直是坏的，
+                        // 加退避能减少无谓重试，同时配合网络回调立刻恢复。
+                        backoff = (backoff + 1).coerceAtMost(3)
+                        val delay = 30_000L * (1L shl (backoff - 1))
+                        synchronized(lock) { try { lock.wait(delay) } catch (_: InterruptedException) {} }
+                    }
                 }
             }.start()
         }
@@ -128,6 +180,7 @@ class SyncService : Service() {
     }
 
     override fun onDestroy() {
+        try { unregisterNetWatch() } catch (_: Throwable) {}
         run = false
         try { (getSystemService(LOCATION_SERVICE) as LocationManager).removeUpdates(listener) } catch (_: Throwable) {}
         try { if (wakeLock?.isHeld == true) wakeLock?.release() } catch (_: Throwable) {}

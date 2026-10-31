@@ -25,34 +25,53 @@ object Api {
         Store.saveServer(c, s); base = s
     }
 
-    private fun call(method: String, path: String, body: JSONObject?, token: String?): JSONObject? = try {
-        val c = URL(base + path).openConnection() as HttpURLConnection
-        c.requestMethod = method; c.connectTimeout = 20_000; c.readTimeout = 20_000
-        token?.let { c.setRequestProperty("Authorization", "Bearer $it") }
-        if (body != null) {
-            c.doOutput = true; c.setRequestProperty("Content-Type", "application/json")
-            c.outputStream.use { it.write(body.toString().toByteArray()) }
-        }
-        val code = c.responseCode
-        if (code in 200..299) {
-            JSONObject(c.inputStream.bufferedReader().readText())
-        } else {
-            // 401 时读取响应体，判断是否被家长解绑
-            if (code == 401) {
-                try {
-                    val txt = c.errorStream?.bufferedReader()?.readText() ?: ""
-                    if (txt.contains("unbound")) onUnbound?.invoke()
-                } catch (_: Exception) {}
+    private fun call(method: String, path: String, body: JSONObject?, token: String?): JSONObject? {
+        // 曾经的坑：代理/VPN 切换、WiFi 换移动数据之后，后台每 30 秒都在重试，
+        // 但一直失败，必须手动点「立即上报」才能恢复。原因是 HttpURLConnection
+        // 默认复用 keep-alive 长连接，旧连接已随网络切换失效却仍被拿来用；
+        // 同时 JVM 会缓存 DNS 结果，代理改了解析也刷不掉。
+        // 这里强制每次关闭连接、禁用缓存，并在 finally 主动 disconnect。
+        var c: HttpURLConnection? = null
+        return try {
+            c = URL(base + path).openConnection() as HttpURLConnection
+            c.requestMethod = method
+            c.connectTimeout = 20_000
+            c.readTimeout = 20_000
+            c.useCaches = false
+            c.setRequestProperty("Connection", "close")
+            c.setRequestProperty("Cache-Control", "no-cache")
+            token?.let { c.setRequestProperty("Authorization", "Bearer $it") }
+            if (body != null) {
+                c.doOutput = true
+                c.setRequestProperty("Content-Type", "application/json")
+                c.outputStream.use { it.write(body.toString().toByteArray()) }
             }
+            val code = c.responseCode
+            if (code in 200..299) {
+                JSONObject(c.inputStream.bufferedReader().readText())
+            } else {
+                // 401 时读取响应体，判断是否被家长解绑
+                if (code == 401) {
+                    try {
+                        val txt = c.errorStream?.bufferedReader()?.readText() ?: ""
+                        if (txt.contains("unbound")) onUnbound?.invoke()
+                    } catch (_: Exception) {}
+                }
+                null
+            }
+        } catch (e: Exception) {
             null
+        } finally {
+            // 主动断开，别把坏连接留在池子里
+            try { c?.disconnect() } catch (_: Throwable) {}
         }
-    } catch (e: Exception) { null }
+    }
 
     fun bind(code: String, model: String) =
         call("POST", "/bind", JSONObject().put("code", code).put("model", model), null)
 
-    fun sync(c: Context) {
-        val t = Store.token(c) ?: return
+    fun sync(c: Context): Boolean {
+        val t = Store.token(c) ?: return false
         val bm = c.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
         val rules = Store.rules(c)
         val used = JSONObject()
@@ -117,6 +136,7 @@ object Api {
         } catch (e: Throwable) {
             Diag.record(c, "rules", false, e.javaClass.simpleName + ": " + (e.message ?: ""))
         }
+        return ok != null
     }
 
     fun askMore(c: Context, pkg: String) {
