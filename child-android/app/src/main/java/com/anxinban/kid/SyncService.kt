@@ -148,21 +148,34 @@ class SyncService : Service() {
         } catch (_: Throwable) {}
     }
 
-    /** 用 AlarmManager 每 15 分钟唤醒一次自己，Doze 下也生效。 */
-    private fun scheduleAlarm() {
-        try {
-            val am = getSystemService(ALARM_SERVICE) as AlarmManager
-            val pi = PendingIntent.getBroadcast(
-                this, 1001, Intent(this, AlarmReceiver::class.java).setAction(ACTION_ALARM),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            val at = System.currentTimeMillis() + 15 * 60_000L
-            if (Build.VERSION.SDK_INT >= 23) {
-                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
-            } else {
-                am.setExact(AlarmManager.RTC_WAKEUP, at, pi)
-            }
-        } catch (_: Throwable) {}
+    private fun scheduleAlarm() = alarm(ctx = this)
+
+    companion object {
+        /**
+         * 用 AlarmManager 唤醒自己，Doze 下也生效。
+         *
+         * 间隔从 15 分钟缩短到 5 分钟：服务被系统清掉后，家长端会长时间显示离线，
+         * 15 分钟的恢复窗口太慢。
+         *
+         * 另外这个函数现在是静态可调用的，因为 AlarmReceiver 自己也要补排下一次——
+         * 以前只有服务里排闹钟，服务一旦被杀或这次启动失败，闹钟链就断了，
+         * 设备从此再也醒不过来。
+         */
+        fun alarm(ctx: Context) {
+            try {
+                val am = ctx.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                val pi = PendingIntent.getBroadcast(
+                    ctx, 1001, Intent(ctx, AlarmReceiver::class.java).setAction(ACTION_ALARM),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                val at = System.currentTimeMillis() + 5 * 60_000L
+                if (Build.VERSION.SDK_INT >= 23) {
+                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pi)
+                } else {
+                    am.setExact(AlarmManager.RTC_WAKEUP, at, pi)
+                }
+            } catch (_: Throwable) {}
+        }
     }
 
     private fun startLocation() {
@@ -221,5 +234,7 @@ class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(c: Context, i: Intent) {
         if (Store.token(c) == null) return
         try { c.startForegroundService(Intent(c, SyncService::class.java)) } catch (_: Throwable) {}
+        // 无论服务能否起来，都把下一次闹钟排上，避免链条断裂
+        SyncService.alarm(c)
     }
 }
