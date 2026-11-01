@@ -161,6 +161,41 @@ object Store {
     fun loc(c: Context): Triple<Double, Double, Float>? =
         c.getSharedPreferences("guard", 0).getString("loc", null)?.split(",")?.let { Triple(it[0].toDouble(), it[1].toDouble(), it[2].toFloat()) }
     private fun p(c: Context) = c.getSharedPreferences("guard", 0)
+
+    /** 记录最近一次无障碍事件的时间戳（有事件就说明服务活着）。 */
+    fun markGuardAlive(c: Context) = p(c).edit().putLong("guardAlive", System.currentTimeMillis()).apply()
+
+    fun guardAlive(c: Context) = p(c).getLong("guardAlive", 0L)
+
+    /**
+     * 检查无障碍服务是否真的在工作。
+     *
+     * vivo/荣耀 等系统会出现「开关显示已开启、服务实际已停止」的情况：
+     * 用户什么都没改，管控却整晚失效，直到发现孩子没被拦住才知道。
+     * 这里用两个信号判断：
+     *   1) 系统当前是否把我们的服务列为 enabled（开关状态）
+     *   2) 最近是否还有无障碍事件进来（真实运行状态）
+     * 只要 1 是关的，或者开机后超过一定时间完全没有事件，就判定异常。
+     */
+    fun guardHealth(c: Context): String {
+        val wantOn = try {
+            val flat = android.provider.Settings.Secure.getString(
+                c.contentResolver, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ) ?: ""
+            flat.contains(c.packageName + "/")
+        } catch (_: Throwable) { false }
+
+        if (!wantOn) return "off"          // 开关就是关的，家长没授权
+
+        // 开关开着，但长时间没有任何事件 —— 典型「假开启」
+        val alive = guardAlive(c)
+        if (alive == 0L) {
+            // 从未记录过事件：可能刚开机/刚授权，先给它 10 分钟
+            val boot = System.currentTimeMillis() - android.os.SystemClock.elapsedRealtime()
+            return if (System.currentTimeMillis() - boot > 10 * 60_000L) "stalled" else "ok"
+        }
+        return if (System.currentTimeMillis() - alive > 2 * 3600_000L) "stalled" else "ok"
+    }
     private fun day() = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
     fun rules(c: Context) = Rules.parse(p(c).getString("rules", "{}")!!)
     fun saveRules(c: Context, json: String) = p(c).edit().putString("rules", json).apply()

@@ -127,6 +127,12 @@ object Api {
         hb.put("adminDisabled", !AdminReceiver.isActive(c))
         // 设备基础信息（型号/系统/存储/内存）
         try { hb.put("device", DeviceInfo.collect(c)) } catch (_: Exception) {}
+        // 无障碍健康状态：off=开关没开，stalled=开关开着但服务已停止，ok=正常。
+        // 以前家长端只看得到心跳和规则，管控整晚失效也发现不了。
+        try {
+            hb.put("guard", Store.guardHealth(c))
+            hb.put("guardAliveAt", Store.guardAlive(c))
+        } catch (_: Exception) {}
         // 位置轨迹（同样分批，一次最多 100 个点）
         val trk = Store.trackJson(c)
         if (trk.length() > 0) {

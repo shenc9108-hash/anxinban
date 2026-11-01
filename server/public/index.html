@@ -419,6 +419,15 @@ function viewGuard(){
       <div class="sub" style="margin-top:4px">孩子取消了设备管理器授权，现在可以卸载孩子端。请检查孩子手机。</div></div>`;
   }
 
+  // 无障碍异常：开关可能显示"已开启"，但服务实际已停止，此时管控完全不生效
+  if(DEV.guard === 'off'){
+    h += `<div class="card" style="background:var(--bad2)"><b>⚠️ 无障碍服务未授权</b>
+      <div class="sub" style="margin-top:4px">孩子手机上的无障碍服务没有开启，<b>定时锁定和限时都不会生效</b>，手机处于完全没有管控的状态。<br>请到「设置 → 无障碍 → 安心伴」打开开关。</div></div>`;
+  } else if(DEV.guard === 'stalled'){
+    h += `<div class="card" style="background:var(--bad2)"><b>⚠️ 无障碍服务已停止运行</b>
+      <div class="sub" style="margin-top:4px">开关可能还显示「已开启」，但服务实际已经停了，<b>管控当前不生效</b>。这是 vivo / 荣耀等机型常见的问题。<br>解决方法：重启手机，再把无障碍开关关掉重新打开一次。</div></div>`;
+  }
+
   // 手机状态
   h += `<div class="card"><h3>手机状态</h3>
     <div class="kv"><span>管控状态</span><span class="chip ${on?'ok':'bad'}">${on?'正在守护':'已离线'}</span></div>
@@ -426,6 +435,7 @@ function viewGuard(){
     <div class="kv"><span>最后联网</span><span>${ago(DEV.seen)}</span></div>
     <div class="kv"><span>设备型号</span><span>${esc(DEV.model||'-')}</span></div>
     <div class="kv"><span>防卸载</span><span class="chip ${DEV.adminDisabled?'bad':'ok'}">${DEV.adminDisabled?'已关闭':'已启用'}</span></div>
+    <div class="kv"><span>无障碍</span><span class="chip ${DEV.guard==='ok'?'ok':'bad'}">${DEV.guard==='ok'?'正常运行':(DEV.guard==='off'?'未授权':(DEV.guard==='stalled'?'已停止':'未知'))}</span></div>
   </div>`;
 
   // 锁定控制

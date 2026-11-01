@@ -49,6 +49,9 @@ class GuardService : AccessibilityService() {
     override fun onDestroy() { running = false; super.onDestroy() }
 
     override fun onAccessibilityEvent(e: AccessibilityEvent) {
+        // 每收到一次事件就盖个时间戳：家长端用它判断无障碍是否真的在工作，
+        // 而不是只看系统开关是否"已开启"（vivo 等机型会出现假开启）。
+        try { Store.markGuardAlive(this) } catch (_: Throwable) {}
         if (e.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = e.packageName?.toString() ?: return
         if (pkg in skip) { account(); cur = null; sessionStart = 0L; return }
