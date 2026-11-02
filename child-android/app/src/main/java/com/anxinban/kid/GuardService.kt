@@ -21,6 +21,9 @@ class GuardService : AccessibilityService() {
     companion object {
         /** 无障碍服务是否在运行：自检面板要显示 */
         @Volatile var running = false
+
+        /** 超过这个静默时长就认为用户中途离开了，下一段另起一条会话。 */
+        private const val MAX_GAP = 2 * 60_000L
     }
 
     private val h = Handler(Looper.getMainLooper())
@@ -48,11 +51,6 @@ class GuardService : AccessibilityService() {
         override fun run() {
             account(); flushGap(); cur?.let { check(it) }; h.postDelayed(this, 30_000)
         }
-    }
-
-    private companion object {
-        /** 超过这个静默时长就认为用户中途离开了，下一段另起一条会话。 */
-        const val MAX_GAP = 2 * 60_000L
     }
 
     override fun onServiceConnected() {
